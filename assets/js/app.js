@@ -1659,14 +1659,43 @@ function filterByPeriod(rows, period) {
   });
 }
 
+function productTypeById(productId) {
+  const product = state.products.find((item) => String(item.id) === String(productId));
+  return product?.type || null;
+}
+
+function resolveItemProductType(item) {
+  return productTypeById(item.productId) || (String(item.sku || item.barcode || "").startsWith("IA") ? "IA" : "HA");
+}
+
 function reportData(period = "month") {
   const sales = filterByPeriod(state.sales, period);
   const purchases = filterByPeriod(state.purchases, period);
   const expenses = filterByPeriod(state.expenses, period);
+  const saleIds = new Set(sales.map((sale) => sale.id));
+  const saleItems = state.saleItems.filter((item) => saleIds.has(item.saleId));
   const receivables = state.credits.filter((item) => item.type === "receivable" && item.status !== "paid");
   const payables = state.credits.filter((item) => item.type === "payable" && item.status !== "paid");
-  const salesTotal = sales.reduce((sum, item) => sum + Number(item.total || 0), 0);
-  const purchaseTotal = purchases.reduce((sum, item) => sum + Number(item.total || 0), 0);
+
+  const salesHa = saleItems
+    .filter((item) => resolveItemProductType(item) === "HA")
+    .reduce((sum, item) => sum + Number(item.lineTotal || 0), 0);
+  const salesIa = saleItems
+    .filter((item) => resolveItemProductType(item) === "IA")
+    .reduce((sum, item) => sum + Number(item.lineTotal || 0), 0);
+
+  const purchasesHa = purchases
+    .filter((item) => (productTypeById(item.productId) || "HA") === "HA")
+    .reduce((sum, item) => sum + Number(item.total || 0), 0);
+  const purchasesIa = purchases
+    .filter((item) => productTypeById(item.productId) === "IA")
+    .reduce((sum, item) => sum + Number(item.total || 0), 0);
+
+  const salesTotal = salesHa + salesIa;
+  const purchaseTotal = purchasesHa + purchasesIa;
+  // Profit only when there are sales for that type (unsold stock purchases are ignored).
+  const profitHa = salesHa > 0 ? Math.abs(salesHa - purchasesHa) : 0;
+  const profitIa = salesIa > 0 ? Math.abs(salesIa - purchasesIa) : 0;
   const expenseTotal = expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const receivableTotal = receivables.reduce((sum, item) => sum + Number(item.amount || 0) - Number(item.paidAmount || 0), 0);
   const payableTotal = payables.reduce((sum, item) => sum + Number(item.amount || 0) - Number(item.paidAmount || 0), 0);
@@ -1677,7 +1706,13 @@ function reportData(period = "month") {
 
   return {
     salesTotal,
+    salesHa,
+    salesIa,
     purchaseTotal,
+    purchasesHa,
+    purchasesIa,
+    profitHa,
+    profitIa,
     expenseTotal,
     receivableTotal,
     payableTotal,
@@ -1687,6 +1722,11 @@ function reportData(period = "month") {
 
 function metricCard(label, value) {
   return `<div class="col-sm-6 col-xl-3"><div class="metric"><span>${label}</span><strong>${money(value)}</strong></div></div>`;
+}
+
+function metricCardPlain(label, value) {
+  const amount = Math.abs(Number(value || 0)).toLocaleString("en-US");
+  return `<div class="col-sm-6 col-xl-3"><div class="metric"><span>${label}</span><strong>${amount} MMK</strong></div></div>`;
 }
 
 function reportPeriodLabel(period) {
@@ -1707,6 +1747,10 @@ function buildDetailedReport(period = "month") {
   const saleIds = new Set(sales.map((sale) => sale.id));
   const saleItems = state.saleItems.filter((item) => saleIds.has(item.saleId));
   const salesById = Object.fromEntries(sales.map((sale) => [sale.id, sale]));
+  const saleItemsHa = saleItems.filter((item) => resolveItemProductType(item) === "HA");
+  const saleItemsIa = saleItems.filter((item) => resolveItemProductType(item) === "IA");
+  const purchasesHa = purchases.filter((item) => (productTypeById(item.productId) || "HA") === "HA");
+  const purchasesIa = purchases.filter((item) => productTypeById(item.productId) === "IA");
 
   return {
     period,
@@ -1715,8 +1759,12 @@ function buildDetailedReport(period = "month") {
     summary,
     sales,
     saleItems,
+    saleItemsHa,
+    saleItemsIa,
     salesById,
     purchases,
+    purchasesHa,
+    purchasesIa,
     expenses,
     credits: state.credits
   };
@@ -1744,15 +1792,7 @@ function renderReportDetails(report) {
   const detailEl = qs("#reports-detail");
   if (!detailEl) return;
 
-  const saleRows = report.sales.map((sale) => [
-    new Date(sale.date).toLocaleDateString(),
-    sale.receiptNo || "-",
-    sale.customerName || "-",
-    paymentTypeLabel(sale.paymentType),
-    `<span class="text-end d-block">${money(sale.total)}</span>`
-  ]);
-
-  const saleItemRows = report.saleItems.map((item) => {
+  const saleItemRowMapper = (item) => {
     const sale = report.salesById[item.saleId];
     return [
       new Date(item.date || sale?.date).toLocaleDateString(),
@@ -1762,16 +1802,16 @@ function renderReportDetails(report) {
       `<span class="text-end d-block">${money(item.price)}</span>`,
       `<span class="text-end d-block">${money(item.lineTotal)}</span>`
     ];
-  });
+  };
 
-  const purchaseRows = report.purchases.map((purchase) => [
+  const purchaseRowMapper = (purchase) => [
     new Date(purchase.date).toLocaleDateString(),
     purchase.supplierName || "-",
     purchase.productName || "-",
     `<span class="text-end d-block">${Number(purchase.qty || 0).toLocaleString()}</span>`,
     `<span class="text-end d-block">${money(purchase.total)}</span>`,
     `${purchase.paymentStatus || "-"}${purchase.paymentType ? ` · ${paymentTypeLabel(purchase.paymentType)}` : ""}`
-  ]);
+  ];
 
   const expenseRows = report.expenses.map((expense) => [
     new Date(expense.date).toLocaleDateString(),
@@ -1791,9 +1831,10 @@ function renderReportDetails(report) {
 
   detailEl.innerHTML = `
     <div class="mb-3 small text-muted">Detailed report for ${report.periodLabel}. Generated ${report.generatedAt}.</div>
-    ${reportTable("Sales", ["Date", "Receipt", "Customer", "Payment", "Total"], saleRows)}
-    ${reportTable("Sale items", ["Date", "Receipt", "Product", "Qty", "Price", "Line total"], saleItemRows)}
-    ${reportTable("Purchases", ["Date", "Supplier", "Product", "Qty", "Total", "Payment"], purchaseRows)}
+    ${reportTable("Sales report — HA", ["Date", "Receipt", "Product", "Qty", "Price", "Line total"], report.saleItemsHa.map(saleItemRowMapper), "No HA sales in this period.")}
+    ${reportTable("Sales report — IA", ["Date", "Receipt", "Product", "Qty", "Price", "Line total"], report.saleItemsIa.map(saleItemRowMapper), "No IA sales in this period.")}
+    ${reportTable("Purchase report — HA", ["Date", "Supplier", "Product", "Qty", "Total", "Payment"], report.purchasesHa.map(purchaseRowMapper), "No HA purchases in this period.")}
+    ${reportTable("Purchase report — IA", ["Date", "Supplier", "Product", "Qty", "Total", "Payment"], report.purchasesIa.map(purchaseRowMapper), "No IA purchases in this period.")}
     ${reportTable("Expenses", ["Date", "Category", "Note", "Amount"], expenseRows)}
     ${reportTable("Credit", ["Type", "Party", "Amount", "Paid", "Balance", "Status"], creditRows, "No credit records.")}
   `;
@@ -1821,33 +1862,30 @@ async function exportReportExcel() {
       ["Generated", report.generatedAt],
       [],
       ["Metric", "Amount (MMK)"],
+      ["Sales report HA", excelMoney(report.summary.salesHa)],
+      ["Sales report IA", excelMoney(report.summary.salesIa)],
       ["Sales total", excelMoney(report.summary.salesTotal)],
+      ["Purchase report HA", excelMoney(report.summary.purchasesHa)],
+      ["Purchase report IA", excelMoney(report.summary.purchasesIa)],
       ["Purchase total", excelMoney(report.summary.purchaseTotal)],
+      ["Profit HA", Math.abs(excelMoney(report.summary.profitHa))],
+      ["Profit IA", Math.abs(excelMoney(report.summary.profitIa))],
       ["Expense total", excelMoney(report.summary.expenseTotal)],
       ["Receivable balance", excelMoney(report.summary.receivableTotal)],
       ["Payable balance", excelMoney(report.summary.payableTotal)],
       ["Stock value", excelMoney(report.summary.stockValue)],
       [],
       ["Sales count", report.sales.length],
-      ["Sale items count", report.saleItems.length],
-      ["Purchases count", report.purchases.length],
+      ["Sale items HA", report.saleItemsHa.length],
+      ["Sale items IA", report.saleItemsIa.length],
+      ["Purchases HA", report.purchasesHa.length],
+      ["Purchases IA", report.purchasesIa.length],
       ["Expenses count", report.expenses.length]
     ]);
 
-    appendExcelSheet(workbook, XLSX, "Sales", [
-      ["Date", "Receipt", "Customer", "Payment", "Total (MMK)"],
-      ...report.sales.map((sale) => [
-        new Date(sale.date).toLocaleDateString(),
-        sale.receiptNo || "",
-        sale.customerName || "",
-        paymentTypeLabel(sale.paymentType),
-        excelMoney(sale.total)
-      ])
-    ]);
-
-    appendExcelSheet(workbook, XLSX, "Sale Items", [
+    appendExcelSheet(workbook, XLSX, "Sales HA", [
       ["Date", "Receipt", "Product", "Barcode", "Unit", "Qty", "Price (MMK)", "Line total (MMK)"],
-      ...report.saleItems.map((item) => {
+      ...report.saleItemsHa.map((item) => {
         const sale = report.salesById[item.saleId];
         return [
           new Date(item.date || sale?.date).toLocaleDateString(),
@@ -1862,9 +1900,41 @@ async function exportReportExcel() {
       })
     ]);
 
-    appendExcelSheet(workbook, XLSX, "Purchases", [
+    appendExcelSheet(workbook, XLSX, "Sales IA", [
+      ["Date", "Receipt", "Product", "Barcode", "Unit", "Qty", "Price (MMK)", "Line total (MMK)"],
+      ...report.saleItemsIa.map((item) => {
+        const sale = report.salesById[item.saleId];
+        return [
+          new Date(item.date || sale?.date).toLocaleDateString(),
+          sale?.receiptNo || "",
+          item.name || "",
+          item.barcode || "",
+          item.unit || "",
+          Number(item.qty || 0),
+          excelMoney(item.price),
+          excelMoney(item.lineTotal)
+        ];
+      })
+    ]);
+
+    appendExcelSheet(workbook, XLSX, "Purchases HA", [
       ["Date", "Supplier", "Product", "Qty", "Unit cost (MMK)", "Batch COGS (MMK)", "Total (MMK)", "Payment", "Payment type"],
-      ...report.purchases.map((purchase) => [
+      ...report.purchasesHa.map((purchase) => [
+        new Date(purchase.date).toLocaleDateString(),
+        purchase.supplierName || "",
+        purchase.productName || "",
+        Number(purchase.qty || 0),
+        excelMoney(purchase.unitCost),
+        excelMoney(purchase.batchCogs),
+        excelMoney(purchase.total),
+        purchase.paymentStatus || "",
+        paymentTypeLabel(purchase.paymentType)
+      ])
+    ]);
+
+    appendExcelSheet(workbook, XLSX, "Purchases IA", [
+      ["Date", "Supplier", "Product", "Qty", "Unit cost (MMK)", "Batch COGS (MMK)", "Total (MMK)", "Payment", "Payment type"],
+      ...report.purchasesIa.map((purchase) => [
         new Date(purchase.date).toLocaleDateString(),
         purchase.supplierName || "",
         purchase.productName || "",
@@ -1900,8 +1970,8 @@ async function exportReportExcel() {
       ])
     ]);
 
-    const stamp = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(workbook, `pos-report-${report.period}-${stamp}.xlsx`);
+    const fileName = `electronics-pos-report-${report.period}-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    XLSX.writeFile(workbook, fileName);
     showToast("Report exported to Excel.");
   } catch (error) {
     showToast(`Export failed: ${error.message}`);
@@ -1914,8 +1984,12 @@ function renderReports() {
   const data = report.summary;
 
   qs("#reports-output").innerHTML = [
-    metricCard("Sales report", data.salesTotal),
-    metricCard("Purchase report", data.purchaseTotal),
+    metricCard("Sales report HA", data.salesHa),
+    metricCard("Sales report IA", data.salesIa),
+    metricCard("Purchase report HA", data.purchasesHa),
+    metricCard("Purchase report IA", data.purchasesIa),
+    metricCardPlain("Profit HA", data.profitHa),
+    metricCardPlain("Profit IA", data.profitIa),
     metricCard("Stock report", data.stockValue),
     metricCard("Credit to receive", data.receivableTotal),
     metricCard("Credit to pay", data.payableTotal),
