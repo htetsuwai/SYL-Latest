@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://cdn.jsdelivr.net">
     <link rel="preconnect" href="https://esm.sh">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="assets/css/styles.css?v=20250909origreport">
+    <link rel="stylesheet" href="assets/css/styles.css?v=20250916teal">
   </head>
   <body>
     <div id="auth-screen" class="auth-screen">
@@ -33,32 +33,71 @@
     </div>
 
     <div id="app-shell" class="app-shell d-none">
-      <nav class="navbar navbar-expand-lg navbar-dark app-nav sticky-top">
-        <div class="container-fluid">
-          <a class="navbar-brand fw-bold" href="#pos">Electronics POS</a>
-          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#main-nav" aria-controls="main-nav" aria-expanded="false" aria-label="Toggle navigation">
-            <span class="navbar-toggler-icon"></span>
-          </button>
-          <div id="main-nav" class="collapse navbar-collapse">
-            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-              <li class="nav-item"><a class="nav-link" href="#pos">POS</a></li>
-              <li class="nav-item admin-only"><a class="nav-link" href="#products">Products</a></li>
-              <li class="nav-item admin-only"><a class="nav-link" href="#inventory">Inventory</a></li>
-              <li class="nav-item admin-only"><a class="nav-link" href="#pricing">Pricing</a></li>
-              <li class="nav-item admin-only"><a class="nav-link" href="#suppliers">Suppliers</a></li>
-              <li class="nav-item admin-only"><a class="nav-link" href="#credit">Credit</a></li>
-              <li class="nav-item admin-only"><a class="nav-link" href="#expenses">Expenses</a></li>
-              <li class="nav-item admin-only"><a class="nav-link" href="#reports">Reports</a></li>
-            </ul>
-            <div class="d-flex align-items-center gap-2 text-white small">
-              <span id="current-role" class="badge text-bg-light">Role</span>
-              <button id="logout-btn" class="btn btn-outline-light btn-sm" type="button">Sign out</button>
-            </div>
+      <aside id="app-sidebar" class="app-sidebar">
+        <div class="sidebar-brand">
+          <span class="sidebar-brand-mark" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M4 7h16l-1.2 12.2a2 2 0 0 1-2 1.8H7.2a2 2 0 0 1-2-1.8L4 7Z" stroke="currentColor" stroke-width="1.8"/><path d="M9 7V5a3 3 0 0 1 6 0v2" stroke="currentColor" stroke-width="1.8"/></svg>
+          </span>
+          <div>
+            <strong>Electronics POS</strong>
+            <small>Admin Panel</small>
           </div>
         </div>
-      </nav>
 
-      <main class="container-fluid py-4">
+        <nav class="sidebar-nav" aria-label="Main">
+          <a class="sidebar-link" href="#pos" data-route="pos">
+            <span class="sidebar-ico" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M7 18v2m10-2v2M8 10h8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
+            <span>POS</span>
+          </a>
+
+          <div class="sidebar-group admin-only" data-group="products">
+            <button class="sidebar-link sidebar-group-toggle" type="button" id="products-nav-toggle" aria-expanded="false" aria-controls="products-submenu">
+              <span class="sidebar-ico" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 7h16v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7Z" stroke="currentColor" stroke-width="1.8"/><path d="M8 7V5a4 4 0 0 1 8 0v2" stroke="currentColor" stroke-width="1.8"/></svg></span>
+              <span>Products</span>
+              <span class="sidebar-chevron" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+            </button>
+            <div id="products-submenu" class="sidebar-submenu" hidden>
+              <a class="sidebar-sublink" href="#products" data-route="products">All Products</a>
+              <a class="sidebar-sublink" href="#inventory" data-route="inventory">Inventory</a>
+            </div>
+          </div>
+
+          <a class="sidebar-link admin-only" href="#pricing" data-route="pricing">
+            <span class="sidebar-ico" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.8"/><path d="M12 8v8m-2.5-5.5h3.2a1.8 1.8 0 0 1 0 3.6H9.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
+            <span>Pricing</span>
+          </a>
+          <a class="sidebar-link admin-only" href="#suppliers" data-route="suppliers">
+            <span class="sidebar-ico" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 18V8l8-4 8 4v10" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 18v-5h6v5" stroke="currentColor" stroke-width="1.8"/></svg></span>
+            <span>Suppliers</span>
+          </a>
+          <a class="sidebar-link admin-only" href="#credit" data-route="credit">
+            <span class="sidebar-ico" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><rect x="3" y="6" width="18" height="12" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M3 10h18" stroke="currentColor" stroke-width="1.8"/></svg></span>
+            <span>Credit</span>
+          </a>
+          <a class="sidebar-link admin-only" href="#expenses" data-route="expenses">
+            <span class="sidebar-ico" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M6 4h9l3 3v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.8"/><path d="M8 11h8M8 15h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
+            <span>Expenses</span>
+          </a>
+          <a class="sidebar-link admin-only" href="#reports" data-route="reports">
+            <span class="sidebar-ico" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 19V5m0 14h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M8 16V10m4 6V7m4 9v-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
+            <span>Sales &amp; Reports</span>
+          </a>
+        </nav>
+      </aside>
+
+      <div class="app-main">
+        <header class="app-topbar">
+          <button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="Toggle menu">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          </button>
+          <div class="topbar-spacer"></div>
+          <div class="topbar-user">
+            <span id="current-role" class="role-pill">Role</span>
+            <button id="logout-btn" class="btn btn-sm btn-outline-secondary" type="button">Sign out</button>
+          </div>
+        </header>
+
+        <main class="app-content">
         <section id="pos" class="view">
           <div class="page-title">
             <div>
@@ -128,144 +167,86 @@
         </section>
 
         <section id="products" class="view admin-only">
-          <div class="page-title">
+          <div class="page-title products-page-header">
             <div>
-              <p class="eyebrow">Inventory & Stock In</p>
-              <h2>Products</h2>
+              <p class="page-breadcrumb">Products &gt; All Products</p>
+              <h2>All Products</h2>
+              <p class="page-subtitle">Manage your electronic POS products, update inventory, prices and availability.</p>
             </div>
-            <button id="print-labels-btn" class="btn btn-outline-primary" type="button">Print Barcode Labels</button>
+            <div class="d-flex flex-wrap gap-2">
+              <button id="print-labels-btn" class="btn btn-outline-secondary" type="button">Print labels</button>
+              <button id="add-product-btn" class="btn btn-primary" type="button">+ Add New Product</button>
+            </div>
           </div>
-          <div class="row g-4">
-            <div class="col-xl-4">
-              <form id="product-form" class="panel vstack gap-3">
-                <input type="hidden" id="product-id">
-                <div id="product-form-mode" class="form-mode-badge">New product</div>
-                <div class="row g-3">
-                  <div class="col-6">
-                    <label class="form-label" for="product-type">Type</label>
-                    <select id="product-type" class="form-select">
-                      <option value="HA">HA</option>
-                      <option value="IA">IA</option>
-                    </select>
-                  </div>
-                  <div class="col-6">
-                    <label class="form-label" for="product-unit">Unit</label>
-                    <select id="product-unit" class="form-select">
-                      <option value="pcs">pcs</option>
-                      <option value="ft">ft</option>
-                      <option value="m">m</option>
-                      <option value="roll">roll</option>
-                      <option value="box">box</option>
-                      <option value="set">set</option>
-                      <option value="pair">pair</option>
-                    </select>
-                  </div>
+
+          <div id="products-metrics" class="products-kpi-grid mb-4"></div>
+
+          <div class="panel products-toolbar mb-3">
+            <div class="row g-2 align-items-center">
+              <div class="col-lg-5">
+                <div class="products-search">
+                  <span class="products-search-ico" aria-hidden="true">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="1.8"/><path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                  </span>
+                  <input id="products-search" class="form-control" type="search" placeholder="Search by product name, SKU, or brand...">
                 </div>
-                <div>
-                  <label class="form-label" for="product-name">Name</label>
-                  <input id="product-name" class="form-control" required>
-                </div>
-                <div>
-                  <label class="form-label" for="product-image">Product image</label>
-                  <input type="hidden" id="product-image-url">
-                  <input id="product-image" class="form-control" type="file" accept="image/*">
-                  <div class="form-text">JPG, PNG, or WebP up to 2 MB. Resized for storage.</div>
-                  <div id="product-image-preview" class="product-image-preview mt-2"></div>
-                  <button id="clear-product-image" class="btn btn-sm btn-outline-secondary mt-2 d-none" type="button">Remove image</button>
-                </div>
-                <div class="row g-3">
-                  <div class="col-6">
-                    <label class="form-label" for="product-sku">SKU</label>
-                    <input id="product-sku" class="form-control" readonly placeholder="Auto-generated">
-                  </div>
-                  <div class="col-6">
-                    <label class="form-label" for="product-barcode">Barcode</label>
-                    <input id="product-barcode" class="form-control" readonly placeholder="Auto-generated">
-                  </div>
-                </div>
-                <div class="row g-3">
-                  <div class="col-6">
-                    <label class="form-label" for="product-unit-cost">Unit cost (this batch)</label>
-                    <input id="product-unit-cost" class="form-control" type="number" min="0" step="1" value="0">
-                  </div>
-                  <div class="col-6">
-                    <label class="form-label" for="product-batch-cogs">Batch COGS</label>
-                    <input id="product-batch-cogs" class="form-control" type="number" min="0" step="1" value="0">
-                    <div class="form-text">Taxi, delivery, packing for whole batch. Divided by qty.</div>
-                  </div>
-                </div>
-                <div class="row g-3">
-                  <div class="col-6">
-                    <label class="form-label" for="product-qty">Qty to add</label>
-                    <input id="product-qty" class="form-control" type="number" min="0.01" step="0.01" value="1">
-                  </div>
-                  <div class="col-6">
-                    <label class="form-label" for="product-margin">Margin %</label>
-                    <input id="product-margin" class="form-control" type="number" min="0" step="0.1" placeholder="Auto">
-                  </div>
-                </div>
-                <div class="row g-3">
-                  <div class="col-6">
-                    <label class="form-label" for="product-supplier">Supplier</label>
-                    <select id="product-supplier" class="form-select">
-                      <option value="__new__">+ New supplier</option>
-                    </select>
-                  </div>
-                  <div class="col-6">
-                    <label class="form-label" for="product-payment">Payment</label>
-                    <select id="product-payment" class="form-select">
-                      <option value="paid">Paid</option>
-                      <option value="payable">Payable</option>
-                    </select>
-                  </div>
-                </div>
-                <div class="row g-3">
-                  <div class="col-6">
-                    <label class="form-label" for="product-payment-type">Payment type</label>
-                    <select id="product-payment-type" class="form-select">
-                      <option value="cash">Cash</option>
-                      <option value="kpay">KPay</option>
-                      <option value="kbz">KBZ Mobile Banking</option>
-                    </select>
-                  </div>
-                </div>
-                <div id="new-supplier-wrap">
-                  <label class="form-label" for="product-new-supplier">New supplier name</label>
-                  <input id="product-new-supplier" class="form-control" placeholder="Enter supplier name">
-                </div>
-                <div id="product-averages" class="computed-price">
-                  <div>Avg unit cost: <strong id="display-avg-cost">0 MMK</strong></div>
-                  <div>Avg COGS / unit: <strong id="display-avg-cogs">0 MMK</strong></div>
-                  <div class="d-flex align-items-center gap-2 flex-wrap">In Stock: <span id="display-stock">0</span></div>
-                  <div>Selling price: <strong id="computed-product-price">0 MMK</strong></div>
-                </div>
-                <div class="d-flex gap-2">
-                  <button id="save-product-btn" class="btn btn-primary flex-fill d-flex align-items-center justify-content-center gap-2" type="submit">
-                    <span id="save-product-text">Save Product</span>
-                    <span id="save-product-spinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
-                  </button>
-                  <button id="reset-product-form" class="btn btn-outline-secondary" type="button">Reset</button>
-                </div>
-              </form>
+              </div>
+              <div class="col-6 col-md-4 col-lg-2">
+                <select id="products-category-filter" class="form-select">
+                  <option value="all">All Categories</option>
+                  <option value="HA">Household Appliances (HA)</option>
+                  <option value="IA">Industry Appliances (IA)</option>
+                </select>
+              </div>
+              <div class="col-6 col-md-4 col-lg-2">
+                <select id="products-brand-filter" class="form-select">
+                  <option value="all">All Brands</option>
+                </select>
+              </div>
+              <div class="col-6 col-md-4 col-lg-2">
+                <select id="products-status-filter" class="form-select">
+                  <option value="all">All Status</option>
+                  <option value="healthy">In Stock</option>
+                  <option value="low">Low Stock</option>
+                  <option value="out">Out of Stock</option>
+                </select>
+              </div>
+              <div class="col-6 col-md-auto col-lg-1">
+                <button id="products-filter-reset" class="btn btn-outline-secondary w-100" type="button" title="Reset filters">Reset</button>
+              </div>
             </div>
-            <div class="col-xl-8">
-              <div class="panel table-responsive">
-                <table class="table table-hover align-middle">
-                  <thead>
-                    <tr>
-                      <th>Image</th>
-                      <th>Name</th>
-                      <th>SKU</th>
-                      <th>Barcode</th>
-                      <th>Type</th>
-                      <th class="text-end">In Stock</th>
-                      <th class="text-end">Avg cost</th>
-                      <th class="text-end">Price</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody id="products-body"></tbody>
-                </table>
+          </div>
+
+          <div class="panel table-responsive products-table-wrap">
+            <table class="table table-hover align-middle products-table mb-0">
+              <thead>
+                <tr>
+                  <th class="products-check-col"><input id="products-select-all" type="checkbox" class="form-check-input" aria-label="Select all"></th>
+                  <th>Product</th>
+                  <th>SKU</th>
+                  <th>Barcode</th>
+                  <th>Category</th>
+                  <th>Brand</th>
+                  <th class="text-end">Price (MMK)</th>
+                  <th class="text-end">Stock</th>
+                  <th>Status</th>
+                  <th class="text-end">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="products-body"></tbody>
+            </table>
+            <div class="products-table-footer">
+              <div id="products-page-info" class="text-muted small">Showing 0 products</div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">
+                <nav id="products-pagination" class="products-pagination" aria-label="Products pages"></nav>
+                <label class="small text-muted d-flex align-items-center gap-2 mb-0">
+                  Show
+                  <select id="products-page-size" class="form-select form-select-sm products-page-size">
+                    <option value="8" selected>8</option>
+                    <option value="12">12</option>
+                    <option value="24">24</option>
+                  </select>
+                </label>
               </div>
             </div>
           </div>
@@ -529,7 +510,7 @@
         <section id="reports" class="view admin-only">
           <div class="page-title">
             <div>
-              <p class="eyebrow">Reports</p>
+              <p class="eyebrow">Sales &amp; Reports</p>
               <h2>Sales, Purchase, Stock, Credit & Expenses</h2>
             </div>
           </div>
@@ -552,7 +533,155 @@
             <div id="reports-detail"></div>
           </div>
         </section>
-      </main>
+        </main>
+      </div>
+    </div>
+
+    <div id="sidebar-backdrop" class="sidebar-backdrop" hidden></div>
+
+    <div class="modal fade" id="product-form-modal" tabindex="-1" aria-labelledby="product-form-modal-label" aria-hidden="true">
+      <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <form id="product-form" class="modal-content">
+          <div class="modal-header">
+            <div>
+              <h2 class="modal-title h5" id="product-form-modal-label">Add New Product</h2>
+              <div id="product-form-mode" class="form-mode-badge mt-2">New product</div>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body vstack gap-3">
+            <input type="hidden" id="product-id">
+            <div class="row g-3">
+              <div class="col-6">
+                <label class="form-label" for="product-type">Category</label>
+                <select id="product-type" class="form-select">
+                  <option value="HA">Household Appliances (HA)</option>
+                  <option value="IA">Industry Appliances (IA)</option>
+                </select>
+              </div>
+              <div class="col-6">
+                <label class="form-label" for="product-unit">Unit</label>
+                <select id="product-unit" class="form-select">
+                  <option value="pcs">pcs</option>
+                  <option value="ft">ft</option>
+                  <option value="m">m</option>
+                  <option value="roll">roll</option>
+                  <option value="box">box</option>
+                  <option value="set">set</option>
+                  <option value="pair">pair</option>
+                </select>
+              </div>
+            </div>
+            <div class="row g-3">
+              <div class="col-md-8">
+                <label class="form-label" for="product-name">Name</label>
+                <input id="product-name" class="form-control" required>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label" for="product-brand">Brand</label>
+                <input id="product-brand" class="form-control" placeholder="Optional">
+              </div>
+            </div>
+            <div>
+              <label class="form-label" for="product-image">Product image</label>
+              <input type="hidden" id="product-image-url">
+              <input id="product-image" class="form-control" type="file" accept="image/*">
+              <div class="form-text">JPG, PNG, or WebP up to 2 MB. Resized for storage.</div>
+              <div id="product-image-preview" class="product-image-preview mt-2"></div>
+              <button id="clear-product-image" class="btn btn-sm btn-outline-secondary mt-2 d-none" type="button">Remove image</button>
+            </div>
+            <div class="row g-3">
+              <div class="col-6">
+                <label class="form-label" for="product-sku">SKU</label>
+                <input id="product-sku" class="form-control" readonly placeholder="Auto-generated">
+              </div>
+              <div class="col-6">
+                <label class="form-label" for="product-barcode">Barcode</label>
+                <input id="product-barcode" class="form-control" readonly placeholder="Auto-generated">
+              </div>
+            </div>
+            <div class="row g-3">
+              <div class="col-6">
+                <label class="form-label" for="product-unit-cost">Unit cost (this batch)</label>
+                <input id="product-unit-cost" class="form-control" type="number" min="0" step="1" value="0">
+              </div>
+              <div class="col-6">
+                <label class="form-label" for="product-batch-cogs">Batch COGS</label>
+                <input id="product-batch-cogs" class="form-control" type="number" min="0" step="1" value="0">
+                <div class="form-text">Taxi, delivery, packing for whole batch. Divided by qty.</div>
+              </div>
+            </div>
+            <div class="row g-3">
+              <div class="col-6">
+                <label class="form-label" for="product-qty">Qty to add</label>
+                <input id="product-qty" class="form-control" type="number" min="0.01" step="0.01" value="1">
+              </div>
+              <div class="col-6">
+                <label class="form-label" for="product-margin">Margin %</label>
+                <input id="product-margin" class="form-control" type="number" min="0" step="0.1" placeholder="Auto">
+              </div>
+            </div>
+            <div class="row g-3">
+              <div class="col-6">
+                <label class="form-label" for="product-supplier">Supplier</label>
+                <select id="product-supplier" class="form-select">
+                  <option value="__new__">+ New supplier</option>
+                </select>
+              </div>
+              <div class="col-6">
+                <label class="form-label" for="product-payment">Payment</label>
+                <select id="product-payment" class="form-select">
+                  <option value="paid">Paid</option>
+                  <option value="payable">Payable</option>
+                </select>
+              </div>
+            </div>
+            <div class="row g-3">
+              <div class="col-6">
+                <label class="form-label" for="product-payment-type">Payment type</label>
+                <select id="product-payment-type" class="form-select">
+                  <option value="cash">Cash</option>
+                  <option value="kpay">KPay</option>
+                  <option value="kbz">KBZ Mobile Banking</option>
+                </select>
+              </div>
+            </div>
+            <div id="new-supplier-wrap">
+              <label class="form-label" for="product-new-supplier">New supplier name</label>
+              <input id="product-new-supplier" class="form-control" placeholder="Enter supplier name">
+            </div>
+            <div id="product-averages" class="computed-price">
+              <div>Avg unit cost: <strong id="display-avg-cost">0 MMK</strong></div>
+              <div>Avg COGS / unit: <strong id="display-avg-cogs">0 MMK</strong></div>
+              <div class="d-flex align-items-center gap-2 flex-wrap">In Stock: <span id="display-stock">0</span></div>
+              <div>Selling price: <strong id="computed-product-price">0 MMK</strong></div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button id="reset-product-form" class="btn btn-outline-secondary" type="button">Reset</button>
+            <button id="save-product-btn" class="btn btn-primary d-flex align-items-center justify-content-center gap-2" type="submit">
+              <span id="save-product-text">Save Product</span>
+              <span id="save-product-spinner" class="spinner-border spinner-border-sm d-none" role="status" aria-hidden="true"></span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="modal fade" id="product-view-modal" tabindex="-1" aria-labelledby="product-view-modal-label" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2 class="modal-title h5" id="product-view-modal-label">Product details</h2>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body" id="product-view-body"></div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+            <button type="button" class="btn btn-primary" id="product-view-edit-btn">Edit / Restock</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="modal fade" id="return-product-modal" tabindex="-1" aria-labelledby="return-product-modal-label" aria-hidden="true">
@@ -652,6 +781,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
-    <script type="module" src="assets/js/app.js?v=20250916supplier"></script>
+    <script type="module" src="assets/js/app.js?v=20250916barcode"></script>
   </body>
 </html>

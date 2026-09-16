@@ -45,10 +45,13 @@ create table if not exists products (
   price numeric default 0,
   stock_qty numeric default 0,
   image_url text,
+  brand text,
   active boolean default true,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
+
+alter table products add column if not exists brand text;
 
 create table if not exists purchases (
   id uuid primary key default gen_random_uuid(),

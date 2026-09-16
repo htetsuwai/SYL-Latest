@@ -81,10 +81,13 @@ function lowStockThreshold() {
 function stockStatus(stockQty) {
   const qty = Number(stockQty || 0);
   const threshold = lowStockThreshold();
-  if (qty <= threshold) {
-    return { level: "low", label: qty <= 0 ? "Out" : "Low", badgeClass: "text-bg-danger" };
+  if (qty <= 0) {
+    return { level: "out", label: "Out of Stock", badgeClass: "status-pill status-out", stockClass: "stock-out" };
   }
-  return { level: "healthy", label: "Healthy", badgeClass: "text-bg-success" };
+  if (qty <= threshold) {
+    return { level: "low", label: "Low Stock", badgeClass: "status-pill status-low", stockClass: "stock-low" };
+  }
+  return { level: "healthy", label: "In Stock", badgeClass: "status-pill status-in", stockClass: "stock-in" };
 }
 
 function stockOnHandHtml(stockQty, unit = "") {
@@ -93,8 +96,8 @@ function stockOnHandHtml(stockQty, unit = "") {
   const unitSuffix = unit ? ` ${unit}` : "";
   return `
     <div class="stock-on-hand">
-      <span class="badge ${status.badgeClass}">${status.label}</span>
-      <span class="stock-qty ${status.level === "low" ? "low-stock" : ""}">${qty.toLocaleString()}${unitSuffix}</span>
+      <span class="badge ${status.level === "healthy" ? "text-bg-success" : "text-bg-danger"}">${status.label === "In Stock" ? "Healthy" : status.label === "Out of Stock" ? "Out" : "Low"}</span>
+      <span class="stock-qty ${status.level !== "healthy" ? "low-stock" : ""}">${qty.toLocaleString()}${unitSuffix}</span>
     </div>
   `;
 }
@@ -251,7 +254,7 @@ function returnableQtyForProduct(productId, excludeReturnId = null) {
 function openProductRestock(productId) {
   location.hash = "#products";
   showRoute();
-  fillProductForm(state.products.find((product) => product.id === productId));
+  openProductFormModal(state.products.find((product) => product.id === productId));
 }
 
 function setDamageModalMode(mode, record = null) {
@@ -625,7 +628,10 @@ const state = {
   stockDamages: [],
   stockReturns: [],
   cart: [],
-  lastReceipt: null
+  lastReceipt: null,
+  productsPage: 1,
+  productsPageSize: 8,
+  viewingProductId: null
 };
 
 const qs = (selector) => document.querySelector(selector);
@@ -945,14 +951,41 @@ function applyRole() {
   }
 }
 
+function setProductsNavOpen(open) {
+  const group = qs('[data-group="products"]');
+  const toggle = qs("#products-nav-toggle");
+  const submenu = qs("#products-submenu");
+  if (!group || !toggle || !submenu) return;
+  group.classList.toggle("open", open);
+  toggle.setAttribute("aria-expanded", open ? "true" : "false");
+  submenu.hidden = !open;
+}
+
+function setSidebarOpen(open) {
+  const shell = qs("#app-shell");
+  const backdrop = qs("#sidebar-backdrop");
+  if (!shell) return;
+  shell.classList.toggle("sidebar-open", open);
+  if (backdrop) backdrop.hidden = !open;
+}
+
 function showRoute() {
   const hash = location.hash || "#pos";
   const target = qs(hash) || qs("#pos");
   qsa(".view").forEach((view) => view.classList.remove("active"));
   target.classList.add("active");
-  qsa(".nav-link").forEach((link) => link.classList.toggle("active", link.getAttribute("href") === `#${target.id}`));
 
-  if (target.id === "pos") qs("#barcode-input").focus();
+  const route = target.id;
+  qsa(".sidebar-link[data-route], .sidebar-sublink[data-route]").forEach((link) => {
+    link.classList.toggle("active", link.dataset.route === route);
+  });
+
+  if (route === "products" || route === "inventory") {
+    setProductsNavOpen(true);
+  }
+
+  setSidebarOpen(false);
+  if (target.id === "pos") qs("#barcode-input")?.focus();
 }
 
 function leaveApp(message = "Signed out. Sign in again to continue.") {
@@ -1037,6 +1070,7 @@ function productDraftFromForm(existing) {
     type: qs("#product-type").value,
     unit: qs("#product-unit").value,
     name: qs("#product-name").value.trim(),
+    brand: qs("#product-brand")?.value.trim() || "",
     sku: isEdit ? existing.sku : (qs("#product-sku").value.trim() || generateSku(qs("#product-type").value, qs("#product-name").value.trim())),
     barcode: isEdit ? existing.barcode : (qs("#product-barcode").value.trim() || generateBarcode()),
     marginPercent: qs("#product-margin").value === "" ? "" : numberValue("#product-margin"),
@@ -1069,28 +1103,193 @@ function productDraftFromForm(existing) {
 
 function renderProducts() {
   const body = qs("#products-body");
-  body.innerHTML = state.products.map((product) => `
-    <tr>
-      <td class="product-image-cell">${productImageHtml(product.imageUrl, product.name)}</td>
-      <td>
-        <strong>${product.name}</strong>
-        <div class="small text-muted">${product.unit}</div>
-      </td>
-      <td><code>${product.sku || "-"}</code></td>
-      <td><code>${product.barcode}</code></td>
-      <td>${product.type}</td>
-      <td class="text-end">${stockOnHandHtml(product.stockQty, product.unit)}</td>
-      <td class="text-end">${money(Number(product.cost || 0) + Number(product.cogs || 0))}</td>
-      <td class="text-end">${money(product.price)}</td>
-      <td class="text-end">
-        <div class="d-flex flex-wrap justify-content-end gap-1">
-          <button class="btn btn-sm btn-outline-secondary" data-print-label="${product.id}">Print label</button>
-          <button class="btn btn-sm btn-outline-primary" data-edit-product="${product.id}">Restock</button>
-          <button class="btn btn-sm btn-outline-danger" data-delete-product="${product.id}">Delete</button>
-        </div>
-      </td>
-    </tr>
-  `).join("");
+  const metricsEl = qs("#products-metrics");
+  if (!body) return;
+
+  const metrics = inventoryMetrics();
+  const total = metrics.total || 1;
+  if (metricsEl) {
+    metricsEl.innerHTML = `
+      <div class="kpi-card">
+        <div class="kpi-icon kpi-blue" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 7h16v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7Z" stroke="currentColor" stroke-width="1.8"/><path d="M8 7V5a4 4 0 0 1 8 0v2" stroke="currentColor" stroke-width="1.8"/></svg></div>
+        <div><span>Total Products</span><strong>${metrics.total}</strong><small class="text-muted">All catalog items</small></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon kpi-green" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M20 7 12 3 4 7l8 4 8-4Z" stroke="currentColor" stroke-width="1.8"/><path d="m4 7 8 4v10l-8-4V7Zm16 0v10l-8 4V11l8-4Z" stroke="currentColor" stroke-width="1.8"/></svg></div>
+        <div><span>In Stock</span><strong>${metrics.healthy}</strong><small class="text-muted">${Math.round((metrics.healthy / total) * 100)}% of total</small></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon kpi-orange" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z" stroke="currentColor" stroke-width="1.8"/></svg></div>
+        <div><span>Low Stock</span><strong>${metrics.low}</strong><small class="text-muted">${Math.round((metrics.low / total) * 100)}% of total</small></div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-icon kpi-red" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="m8 8 8 8M16 8l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div>
+        <div><span>Out of Stock</span><strong>${metrics.out}</strong><small class="text-muted">${Math.round((metrics.out / total) * 100)}% of total</small></div>
+      </div>
+    `;
+  }
+
+  populateProductBrandFilter();
+  const filtered = filteredProductsList();
+  const pageSize = Number(qs("#products-page-size")?.value || state.productsPageSize || 8);
+  state.productsPageSize = pageSize;
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  if (state.productsPage > pageCount) state.productsPage = pageCount;
+  const start = (state.productsPage - 1) * pageSize;
+  const pageRows = filtered.slice(start, start + pageSize);
+
+  body.innerHTML = pageRows.length
+    ? pageRows.map((product) => {
+      const qty = Number(product.stockQty || 0);
+      const status = stockStatus(qty);
+      const brand = productBrand(product);
+      return `
+        <tr>
+          <td><input type="checkbox" class="form-check-input product-row-check" value="${product.id}" aria-label="Select ${product.name}"></td>
+          <td>
+            <div class="product-cell">
+              ${productImageHtml(product.imageUrl, product.name, "product-thumb product-thumb-lg")}
+              <div>
+                <strong>${product.name}</strong>
+                <div class="small text-muted">${productTypeLabel(product.type)} · ${product.unit || "pcs"}</div>
+              </div>
+            </div>
+          </td>
+          <td><code>${product.sku || "-"}</code></td>
+          <td><code>${product.barcode || "-"}</code></td>
+          <td>${productTypeLabel(product.type)}</td>
+          <td>${brand}</td>
+          <td class="text-end">${Number(product.price || 0).toLocaleString("en-US")}</td>
+          <td class="text-end"><span class="${status.stockClass}">${qty.toLocaleString()}</span></td>
+          <td><span class="${status.badgeClass}"><span class="status-dot"></span>${status.label}</span></td>
+          <td class="text-end">
+            <div class="product-actions">
+              <button class="action-btn action-edit" type="button" data-edit-product="${product.id}" title="Edit / Restock" aria-label="Edit">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="m4 20 4.5-1.2L19 8.3a2 2 0 0 0 0-2.8L18.5 5a2 2 0 0 0-2.8 0L5.2 15.5 4 20Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
+              </button>
+              <button class="action-btn action-view" type="button" data-view-product="${product.id}" title="View" aria-label="View">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.7"/></svg>
+              </button>
+              <button class="action-btn action-delete" type="button" data-delete-product="${product.id}" title="Delete" aria-label="Delete">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V5h6v2m-8 0 1 12h8l1-12" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </button>
+            </div>
+          </td>
+        </tr>`;
+    }).join("")
+    : `<tr><td colspan="10" class="text-center text-muted py-4">No products match your filters.</td></tr>`;
+
+  const info = qs("#products-page-info");
+  if (info) {
+    if (!filtered.length) info.textContent = "Showing 0 products";
+    else info.textContent = `Showing ${start + 1} – ${Math.min(start + pageSize, filtered.length)} of ${filtered.length} products`;
+  }
+
+  const pager = qs("#products-pagination");
+  if (pager) {
+    const buttons = [];
+    buttons.push(`<button type="button" class="page-btn" data-products-page="${Math.max(1, state.productsPage - 1)}" ${state.productsPage <= 1 ? "disabled" : ""}>‹</button>`);
+    for (let page = 1; page <= pageCount; page += 1) {
+      if (pageCount > 7 && Math.abs(page - state.productsPage) > 2 && page !== 1 && page !== pageCount) {
+        if (page === 2 || page === pageCount - 1) buttons.push(`<span class="page-ellipsis">…</span>`);
+        continue;
+      }
+      buttons.push(`<button type="button" class="page-btn ${page === state.productsPage ? "active" : ""}" data-products-page="${page}">${page}</button>`);
+    }
+    buttons.push(`<button type="button" class="page-btn" data-products-page="${Math.min(pageCount, state.productsPage + 1)}" ${state.productsPage >= pageCount ? "disabled" : ""}>›</button>`);
+    pager.innerHTML = buttons.join("");
+  }
+
+  const selectAll = qs("#products-select-all");
+  if (selectAll) selectAll.checked = false;
+}
+
+function productTypeLabel(type) {
+  if (type === "HA") return "Household Appliances";
+  if (type === "IA") return "Industry Appliances";
+  return type || "-";
+}
+
+function productBrand(product) {
+  if (product?.brand) return product.brand;
+  const purchase = state.purchases.find((item) => String(item.productId) === String(product?.id));
+  return purchase?.supplierName || "-";
+}
+
+function getProductListFilters() {
+  return {
+    search: (qs("#products-search")?.value || "").trim().toLowerCase(),
+    category: qs("#products-category-filter")?.value || "all",
+    brand: qs("#products-brand-filter")?.value || "all",
+    status: qs("#products-status-filter")?.value || "all"
+  };
+}
+
+function matchesProductListFilters(product, filters) {
+  const qty = Number(product.stockQty || 0);
+  const threshold = lowStockThreshold();
+  const brand = productBrand(product);
+
+  if (filters.category !== "all" && product.type !== filters.category) return false;
+  if (filters.brand !== "all" && brand !== filters.brand) return false;
+  if (filters.status === "out" && qty > 0) return false;
+  if (filters.status === "low" && (qty <= 0 || qty > threshold)) return false;
+  if (filters.status === "healthy" && qty <= threshold) return false;
+
+  if (filters.search) {
+    const haystack = [product.name, product.sku, product.barcode, brand].join(" ").toLowerCase();
+    if (!haystack.includes(filters.search)) return false;
+  }
+  return true;
+}
+
+function filteredProductsList() {
+  const filters = getProductListFilters();
+  return state.products
+    .filter((product) => matchesProductListFilters(product, filters))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function populateProductBrandFilter() {
+  const select = qs("#products-brand-filter");
+  if (!select) return;
+  const current = select.value || "all";
+  const brands = [...new Set(state.products.map((product) => productBrand(product)).filter((brand) => brand && brand !== "-"))].sort((a, b) => a.localeCompare(b));
+  select.innerHTML = [`<option value="all">All Brands</option>`, ...brands.map((brand) => `<option value="${brand.replace(/"/g, "&quot;")}">${brand}</option>`)].join("");
+  select.value = brands.includes(current) || current === "all" ? current : "all";
+}
+
+function openProductFormModal(product = null) {
+  fillProductForm(product || undefined);
+  const title = qs("#product-form-modal-label");
+  if (title) title.textContent = product?.id ? "Edit / Restock Product" : "Add New Product";
+  bootstrap.Modal.getOrCreateInstance(qs("#product-form-modal")).show();
+}
+
+function openProductViewModal(productId) {
+  const product = state.products.find((item) => item.id === productId);
+  if (!product) return;
+  state.viewingProductId = productId;
+  const status = stockStatus(product.stockQty);
+  qs("#product-view-body").innerHTML = `
+    <div class="d-flex gap-3 mb-3">
+      ${productImageHtml(product.imageUrl, product.name, "product-thumb product-thumb-lg")}
+      <div>
+        <h3 class="h5 mb-1">${product.name}</h3>
+        <div class="text-muted small mb-2">${productTypeLabel(product.type)} · ${product.unit || "pcs"}</div>
+        <span class="${status.badgeClass}"><span class="status-dot"></span>${status.label}</span>
+      </div>
+    </div>
+    <div class="row g-3 small">
+      <div class="col-6"><div class="text-muted">SKU</div><strong>${product.sku || "-"}</strong></div>
+      <div class="col-6"><div class="text-muted">Barcode</div><strong>${product.barcode || "-"}</strong></div>
+      <div class="col-6"><div class="text-muted">Brand</div><strong>${productBrand(product)}</strong></div>
+      <div class="col-6"><div class="text-muted">Price</div><strong>${money(product.price)}</strong></div>
+      <div class="col-6"><div class="text-muted">Stock</div><strong>${Number(product.stockQty || 0).toLocaleString()} ${product.unit || ""}</strong></div>
+      <div class="col-6"><div class="text-muted">Landed cost</div><strong>${money(landedCost(product))}</strong></div>
+    </div>
+  `;
+  bootstrap.Modal.getOrCreateInstance(qs("#product-view-modal")).show();
 }
 
 function renderInventory() {
@@ -1268,11 +1467,12 @@ function fillProductForm(product) {
   qs("#product-unit").value = product?.unit || "pcs";
   qs("#product-name").value = product?.name || "";
   qs("#product-name").readOnly = isEdit;
+  if (qs("#product-brand")) qs("#product-brand").value = product?.brand || "";
   qs("#product-sku").value = product?.sku || "";
   qs("#product-barcode").value = product?.barcode || "";
   qs("#product-unit-cost").value = 0;
   qs("#product-batch-cogs").value = 0;
-  qs("#product-qty").value = 1;
+  qs("#product-qty").value = isEdit ? 1 : 1;
   qs("#product-margin").value = product?.marginPercent ?? "";
   qs("#product-payment").value = "paid";
   qs("#product-payment-type").value = "cash";
@@ -1386,6 +1586,7 @@ async function saveProduct(event) {
     }
 
     fillProductForm();
+    bootstrap.Modal.getInstance(qs("#product-form-modal"))?.hide();
     await loadData();
     showToast(existing ? "Product restocked." : "Product saved.");
   } catch (error) {
@@ -2090,6 +2291,16 @@ function printProductLabel(productId) {
 function bindEvents() {
   window.addEventListener("hashchange", showRoute);
 
+  qs("#sidebar-toggle")?.addEventListener("click", () => {
+    const open = !qs("#app-shell")?.classList.contains("sidebar-open");
+    setSidebarOpen(open);
+  });
+  qs("#sidebar-backdrop")?.addEventListener("click", () => setSidebarOpen(false));
+  qs("#products-nav-toggle")?.addEventListener("click", () => {
+    const group = qs('[data-group="products"]');
+    setProductsNavOpen(!group?.classList.contains("open"));
+  });
+
   qs("#login-form").addEventListener("submit", async (event) => {
     event.preventDefault();
     setLoginLoading(true, "Signing in...");
@@ -2143,14 +2354,57 @@ function bindEvents() {
   qs("#product-image").addEventListener("change", handleProductImageChange);
   qs("#clear-product-image").addEventListener("click", clearProductImage);
 
-  qs("#reset-product-form").addEventListener("click", () => fillProductForm());
+  qs("#reset-product-form").addEventListener("click", () => {
+    const idValue = qs("#product-id").value;
+    fillProductForm(idValue ? state.products.find((product) => product.id === idValue) : undefined);
+  });
+
+  qs("#add-product-btn")?.addEventListener("click", () => openProductFormModal());
+  qs("#products-search")?.addEventListener("input", () => {
+    state.productsPage = 1;
+    renderProducts();
+  });
+  ["#products-category-filter", "#products-brand-filter", "#products-status-filter", "#products-page-size"].forEach((selector) => {
+    qs(selector)?.addEventListener("change", () => {
+      if (selector === "#products-page-size") state.productsPage = 1;
+      else state.productsPage = 1;
+      renderProducts();
+    });
+  });
+  qs("#products-filter-reset")?.addEventListener("click", () => {
+    if (qs("#products-search")) qs("#products-search").value = "";
+    if (qs("#products-category-filter")) qs("#products-category-filter").value = "all";
+    if (qs("#products-brand-filter")) qs("#products-brand-filter").value = "all";
+    if (qs("#products-status-filter")) qs("#products-status-filter").value = "all";
+    state.productsPage = 1;
+    renderProducts();
+  });
+  qs("#products-pagination")?.addEventListener("click", (event) => {
+    const page = event.target.closest("[data-products-page]")?.dataset.productsPage;
+    if (!page) return;
+    state.productsPage = Number(page);
+    renderProducts();
+  });
+  qs("#products-select-all")?.addEventListener("change", (event) => {
+    qsa(".product-row-check").forEach((box) => {
+      box.checked = event.target.checked;
+    });
+  });
+  qs("#product-view-edit-btn")?.addEventListener("click", () => {
+    const product = state.products.find((item) => item.id === state.viewingProductId);
+    bootstrap.Modal.getInstance(qs("#product-view-modal"))?.hide();
+    if (product) openProductFormModal(product);
+  });
 
   qs("#products-body").addEventListener("click", async (event) => {
-    const printId = event.target.dataset.printLabel;
-    const editId = event.target.dataset.editProduct;
-    const deleteId = event.target.dataset.deleteProduct;
-    if (printId) printProductLabel(printId);
-    if (editId) fillProductForm(state.products.find((product) => product.id === editId));
+    const editBtn = event.target.closest("[data-edit-product]");
+    const viewBtn = event.target.closest("[data-view-product]");
+    const deleteBtn = event.target.closest("[data-delete-product]");
+    const editId = editBtn?.dataset.editProduct;
+    const viewId = viewBtn?.dataset.viewProduct;
+    const deleteId = deleteBtn?.dataset.deleteProduct;
+    if (editId) openProductFormModal(state.products.find((product) => product.id === editId));
+    if (viewId) openProductViewModal(viewId);
     if (deleteId && confirm("Delete this product?")) {
       await removeDoc("products", deleteId);
       await loadData();
