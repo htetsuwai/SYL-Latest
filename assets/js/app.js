@@ -909,6 +909,7 @@ async function loadAdminData() {
   state.stockReturns = stockReturns.sort((a, b) => b.date.localeCompare(a.date));
 
   renderSuppliersTable();
+  renderProductSupplierSelect();
   renderPurchases();
   renderCredits();
   renderExpenses();
@@ -1202,13 +1203,34 @@ function renderDamageLog() {
     : `<tr><td colspan="7" class="text-center text-muted py-3">No damage records yet.</td></tr>`;
 }
 
-function renderProductSupplierSelect() {
-  const options = [
-    `<option value="__new__">+ New supplier</option>`,
-    ...state.suppliers.map((supplier) => `<option value="${supplier.id}">${supplier.name}</option>`)
-  ].join("");
-  qs("#product-supplier").innerHTML = options;
+function renderProductSupplierSelect(preferredSupplierId = null) {
+  const select = qs("#product-supplier");
+  if (!select) return;
+
+  const previous = preferredSupplierId || select.value;
+  const supplierOptions = state.suppliers.map(
+    (supplier) => `<option value="${supplier.id}">${supplier.name}</option>`
+  );
+
+  if (state.suppliers.length) {
+    select.innerHTML = [
+      ...supplierOptions,
+      `<option value="__new__">+ New supplier</option>`
+    ].join("");
+    const keepPrevious = previous && previous !== "__new__" && state.suppliers.some((supplier) => String(supplier.id) === String(previous));
+    select.value = keepPrevious ? String(previous) : String(state.suppliers[0].id);
+  } else {
+    select.innerHTML = `<option value="__new__">+ New supplier</option>`;
+    select.value = "__new__";
+  }
+
   toggleNewSupplierField();
+}
+
+function lastSupplierIdForProduct(productId) {
+  if (!productId) return null;
+  const purchase = state.purchases.find((item) => String(item.productId) === String(productId) && item.supplierId);
+  return purchase?.supplierId || null;
 }
 
 function renderSuppliersTable() {
@@ -1262,7 +1284,7 @@ function fillProductForm(product) {
   qs("#display-avg-cogs").textContent = money(product?.cogs || 0);
   previewGeneratedCodes();
   updateComputedPrice(product);
-  renderProductSupplierSelect();
+  renderProductSupplierSelect(lastSupplierIdForProduct(product?.id));
 }
 
 function previewGeneratedCodes() {
