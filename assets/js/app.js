@@ -305,8 +305,8 @@ function openDamageEditModal(recordId) {
   qs("#damage-product-id").value = product.id;
   qs("#damage-product-name").textContent = product.name;
   qs("#damage-available-stock").textContent = `${stockQty.toLocaleString()} ${product.unit}`;
-  qs("#damage-qty").value = Number(record.qty || 1);
-  qs("#damage-qty").max = stockQty + Number(record.qty || 0);
+  qs("#damage-qty").value = Math.max(1, Math.round(Number(record.qty || 1)));
+  qs("#damage-qty").max = Math.max(1, Math.round(stockQty + Number(record.qty || 0)));
   qs("#damage-note").value = record.note || "";
   bootstrap.Modal.getOrCreateInstance(qs("#damage-product-modal")).show();
 }
@@ -350,7 +350,7 @@ async function recordProductDamage(event) {
   const recordId = qs("#damage-record-id").value;
   const productId = qs("#damage-product-id").value;
   const product = state.products.find((item) => item.id === productId);
-  const qty = numberValue("#damage-qty");
+  const qty = Math.max(1, Math.round(numberValue("#damage-qty")));
   const note = qs("#damage-note").value.trim();
   const stockQty = Number(product?.stockQty || 0);
 
@@ -496,8 +496,8 @@ function openReturnEditModal(recordId) {
   qs("#return-sold-qty").textContent = `${soldQty.toLocaleString()} ${product.unit}`;
   qs("#return-returned-qty").textContent = `${returnedQty.toLocaleString()} ${product.unit}`;
   qs("#return-returnable-qty").textContent = `${returnableQty.toLocaleString()} ${product.unit}`;
-  qs("#return-qty").value = Number(record.qty || 1);
-  qs("#return-qty").max = returnableQty;
+  qs("#return-qty").value = Math.max(1, Math.round(Number(record.qty || 1)));
+  qs("#return-qty").max = Math.max(1, Math.round(returnableQty));
   qs("#return-customer").value = record.customerName || "";
   qs("#return-note").value = record.note || "";
   bootstrap.Modal.getOrCreateInstance(qs("#return-product-modal")).show();
@@ -509,7 +509,7 @@ async function recordProductReturn(event) {
   const recordId = qs("#return-record-id").value;
   const productId = qs("#return-product-id").value;
   const product = state.products.find((item) => item.id === productId);
-  const qty = numberValue("#return-qty");
+  const qty = Math.max(1, Math.round(numberValue("#return-qty")));
   const customerName = qs("#return-customer").value.trim();
   const note = qs("#return-note").value.trim();
   const stockQty = Number(product?.stockQty || 0);
@@ -1060,7 +1060,7 @@ function renderSettings() {
 
 function productDraftFromForm(existing) {
   const isEdit = Boolean(existing?.id);
-  const qty = numberValue("#product-qty");
+  const qty = Math.max(1, Math.round(numberValue("#product-qty")));
   const unitCost = numberValue("#product-unit-cost");
   const batchCogs = numberValue("#product-batch-cogs");
   const cogsPerUnit = batchCogsPerUnit(batchCogs, qty);
@@ -1602,8 +1602,9 @@ function addProductToCart(product, quantity = 1) {
     return;
   }
 
+  const addQty = Math.max(1, Math.round(Number(quantity || 1)));
   const existing = state.cart.find((item) => item.productId === product.id);
-  if (existing) existing.qty += quantity;
+  if (existing) existing.qty = Math.max(1, Math.round(Number(existing.qty || 0) + addQty));
   else {
     state.cart.push({
       productId: product.id,
@@ -1611,7 +1612,7 @@ function addProductToCart(product, quantity = 1) {
       barcode: product.barcode,
       unit: product.unit,
       price: Number(product.price || 0),
-      qty: quantity
+      qty: addQty
     });
   }
 
@@ -1674,7 +1675,7 @@ function renderCart() {
       </td>
       <td class="text-end">${money(item.price)}</td>
       <td class="text-center">
-        <input class="form-control form-control-sm text-center cart-qty" data-cart-product="${item.productId}" type="number" min="0.01" step="0.01" value="${item.qty}">
+        <input class="form-control form-control-sm text-center cart-qty" data-cart-product="${item.productId}" type="number" min="1" step="1" value="${Math.max(1, Math.round(Number(item.qty || 1)))}">
       </td>
       <td class="text-end">${money(item.price * item.qty)}</td>
       <td class="text-end"><button class="btn btn-sm btn-outline-danger" data-remove-cart="${item.productId}">Remove</button></td>
@@ -2458,7 +2459,10 @@ function bindEvents() {
   qs("#cart-body").addEventListener("input", (event) => {
     if (!event.target.classList.contains("cart-qty")) return;
     const item = state.cart.find((row) => row.productId === event.target.dataset.cartProduct);
-    if (item) item.qty = Number(event.target.value || 1);
+    if (item) {
+      item.qty = Math.max(1, Math.round(Number(event.target.value || 1)));
+      event.target.value = item.qty;
+    }
     renderCart();
   });
 

@@ -12,7 +12,7 @@
   <body>
     <div id="auth-screen" class="auth-screen">
       <main class="auth-card">
-        <p class="text-uppercase small text-muted mb-1">SYL</p>
+        <h1 class="h3 mb-3">SYL</h1>
         <h1 class="h3 mb-3">POS & Business Management</h1>
         <form id="login-form" class="vstack gap-3">
           <div>
@@ -614,7 +614,7 @@
             <div class="row g-3">
               <div class="col-6">
                 <label class="form-label" for="product-qty">Qty to add</label>
-                <input id="product-qty" class="form-control" type="number" min="0.01" step="0.01" value="1">
+                <input id="product-qty" class="form-control" type="number" min="1" step="1" value="1">
               </div>
               <div class="col-6">
                 <label class="form-label" for="product-margin">Margin %</label>
@@ -718,7 +718,7 @@
             </div>
             <div>
               <label class="form-label" for="return-qty">Return qty</label>
-              <input id="return-qty" class="form-control" type="number" min="0.01" step="0.01" value="1" required>
+              <input id="return-qty" class="form-control" type="number" min="1" step="1" value="1" required>
               <div class="form-text">Cannot exceed sold qty still available to return.</div>
             </div>
             <div>
@@ -758,7 +758,7 @@
             </div>
             <div>
               <label class="form-label" for="damage-qty">Damage qty</label>
-              <input id="damage-qty" class="form-control" type="number" min="0.01" step="0.01" value="1" required>
+              <input id="damage-qty" class="form-control" type="number" min="1" step="1" value="1" required>
             </div>
             <div>
               <label class="form-label" for="damage-note">Reason / note</label>
@@ -781,6 +781,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
-    <script type="module" src="assets/js/app.js?v=20250916barcode"></script>
+    <script type="module" src="assets/js/app.js?v=20250917intqty"></script>
   </body>
 </html>
