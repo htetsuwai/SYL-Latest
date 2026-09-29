@@ -1892,21 +1892,45 @@ function resolveItemProductType(item) {
   return productTypeById(item.productId) || (String(item.sku || item.barcode || "").startsWith("IA") ? "IA" : "HA");
 }
 
+function returnRefundAmount(row) {
+  if (row.refundValue != null && row.refundValue !== "") {
+    return Number(row.refundValue || 0);
+  }
+  const product = state.products.find((item) => String(item.id) === String(row.productId));
+  return Math.max(0, Math.round(Number(row.qty || 0))) * Number(product?.price || 0);
+}
+
+function resolveReturnProductType(row) {
+  return productTypeById(row.productId) || (String(row.sku || "").startsWith("IA") ? "IA" : "HA");
+}
+
 function reportData(period = "month") {
   const sales = filterByPeriod(state.sales, period);
   const purchases = filterByPeriod(state.purchases, period);
   const expenses = filterByPeriod(state.expenses, period);
+  const returns = filterByPeriod(state.stockReturns, period);
   const saleIds = new Set(sales.map((sale) => sale.id));
   const saleItems = state.saleItems.filter((item) => saleIds.has(item.saleId));
   const receivables = state.credits.filter((item) => item.type === "receivable" && item.status !== "paid");
   const payables = state.credits.filter((item) => item.type === "payable" && item.status !== "paid");
 
-  const salesHa = saleItems
+  const grossSalesHa = saleItems
     .filter((item) => resolveItemProductType(item) === "HA")
     .reduce((sum, item) => sum + Number(item.lineTotal || 0), 0);
-  const salesIa = saleItems
+  const grossSalesIa = saleItems
     .filter((item) => resolveItemProductType(item) === "IA")
     .reduce((sum, item) => sum + Number(item.lineTotal || 0), 0);
+
+  const returnsHa = returns
+    .filter((item) => resolveReturnProductType(item) === "HA")
+    .reduce((sum, item) => sum + returnRefundAmount(item), 0);
+  const returnsIa = returns
+    .filter((item) => resolveReturnProductType(item) === "IA")
+    .reduce((sum, item) => sum + returnRefundAmount(item), 0);
+
+  // Net sales after returns
+  const salesHa = Math.max(0, grossSalesHa - returnsHa);
+  const salesIa = Math.max(0, grossSalesIa - returnsIa);
 
   const purchasesHa = purchases
     .filter((item) => (productTypeById(item.productId) || "HA") === "HA")
@@ -1917,12 +1941,13 @@ function reportData(period = "month") {
 
   const salesTotal = salesHa + salesIa;
   const purchaseTotal = purchasesHa + purchasesIa;
-  // Profit only when there are sales for that type (unsold stock purchases are ignored).
+  // Profit uses net sales (after returns). Unsold stock purchases are ignored when net sales are 0.
   const profitHa = salesHa > 0 ? Math.abs(salesHa - purchasesHa) : 0;
   const profitIa = salesIa > 0 ? Math.abs(salesIa - purchasesIa) : 0;
   const expenseTotal = expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);
   const receivableTotal = receivables.reduce((sum, item) => sum + Number(item.amount || 0) - Number(item.paidAmount || 0), 0);
   const payableTotal = payables.reduce((sum, item) => sum + Number(item.amount || 0) - Number(item.paidAmount || 0), 0);
+  // Stock value uses current in-stock qty (returns already add stock back).
   const stockValue = state.products.reduce(
     (sum, item) => sum + Number(item.stockQty || 0) * (Number(item.cost || 0) + Number(item.cogs || 0)),
     0
@@ -1932,6 +1957,10 @@ function reportData(period = "month") {
     salesTotal,
     salesHa,
     salesIa,
+    grossSalesHa,
+    grossSalesIa,
+    returnsHa,
+    returnsIa,
     purchaseTotal,
     purchasesHa,
     purchasesIa,
@@ -1968,6 +1997,7 @@ function buildDetailedReport(period = "month") {
   const sales = filterByPeriod(state.sales, period);
   const purchases = filterByPeriod(state.purchases, period);
   const expenses = filterByPeriod(state.expenses, period);
+  const returns = filterByPeriod(state.stockReturns, period);
   const saleIds = new Set(sales.map((sale) => sale.id));
   const saleItems = state.saleItems.filter((item) => saleIds.has(item.saleId));
   const salesById = Object.fromEntries(sales.map((sale) => [sale.id, sale]));
@@ -1975,6 +2005,8 @@ function buildDetailedReport(period = "month") {
   const saleItemsIa = saleItems.filter((item) => resolveItemProductType(item) === "IA");
   const purchasesHa = purchases.filter((item) => (productTypeById(item.productId) || "HA") === "HA");
   const purchasesIa = purchases.filter((item) => productTypeById(item.productId) === "IA");
+  const returnsHa = returns.filter((item) => resolveReturnProductType(item) === "HA");
+  const returnsIa = returns.filter((item) => resolveReturnProductType(item) === "IA");
 
   return {
     period,
@@ -1989,6 +2021,9 @@ function buildDetailedReport(period = "month") {
     purchases,
     purchasesHa,
     purchasesIa,
+    returns,
+    returnsHa,
+    returnsIa,
     expenses,
     credits: state.credits
   };
@@ -2086,9 +2121,13 @@ async function exportReportExcel() {
       ["Generated", report.generatedAt],
       [],
       ["Metric", "Amount (MMK)"],
-      ["Sales report HA", excelMoney(report.summary.salesHa)],
-      ["Sales report IA", excelMoney(report.summary.salesIa)],
-      ["Sales total", excelMoney(report.summary.salesTotal)],
+      ["Gross sales HA", excelMoney(report.summary.grossSalesHa)],
+      ["Returns HA", excelMoney(report.summary.returnsHa)],
+      ["Sales report HA (net)", excelMoney(report.summary.salesHa)],
+      ["Gross sales IA", excelMoney(report.summary.grossSalesIa)],
+      ["Returns IA", excelMoney(report.summary.returnsIa)],
+      ["Sales report IA (net)", excelMoney(report.summary.salesIa)],
+      ["Sales total (net)", excelMoney(report.summary.salesTotal)],
       ["Purchase report HA", excelMoney(report.summary.purchasesHa)],
       ["Purchase report IA", excelMoney(report.summary.purchasesIa)],
       ["Purchase total", excelMoney(report.summary.purchaseTotal)],
@@ -2102,9 +2141,37 @@ async function exportReportExcel() {
       ["Sales count", report.sales.length],
       ["Sale items HA", report.saleItemsHa.length],
       ["Sale items IA", report.saleItemsIa.length],
+      ["Returns HA count", report.returnsHa.length],
+      ["Returns IA count", report.returnsIa.length],
       ["Purchases HA", report.purchasesHa.length],
       ["Purchases IA", report.purchasesIa.length],
       ["Expenses count", report.expenses.length]
+    ]);
+
+    appendExcelSheet(workbook, XLSX, "Returns HA", [
+      ["Date", "Product", "SKU", "Qty", "Refund (MMK)", "Customer", "Note"],
+      ...report.returnsHa.map((row) => [
+        new Date(row.date).toLocaleDateString(),
+        row.productName || "",
+        row.sku || "",
+        Number(row.qty || 0),
+        excelMoney(returnRefundAmount(row)),
+        row.customerName || "",
+        row.note || ""
+      ])
+    ]);
+
+    appendExcelSheet(workbook, XLSX, "Returns IA", [
+      ["Date", "Product", "SKU", "Qty", "Refund (MMK)", "Customer", "Note"],
+      ...report.returnsIa.map((row) => [
+        new Date(row.date).toLocaleDateString(),
+        row.productName || "",
+        row.sku || "",
+        Number(row.qty || 0),
+        excelMoney(returnRefundAmount(row)),
+        row.customerName || "",
+        row.note || ""
+      ])
     ]);
 
     appendExcelSheet(workbook, XLSX, "Sales HA", [
@@ -2221,7 +2288,8 @@ function renderReports() {
     `<div class="col-sm-6 col-xl-3"><div class="metric"><span>Sales count</span><strong>${report.sales.length}</strong></div></div>`
   ].join("");
 
-  renderReportDetails(report);
+  const detailEl = qs("#reports-detail");
+  if (detailEl) detailEl.innerHTML = "";
 }
 
 function printReceipt() {
