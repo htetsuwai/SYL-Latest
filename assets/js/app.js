@@ -1759,7 +1759,8 @@ async function completeSale() {
 
   const savedItems = [];
   for (const item of state.cart) {
-    const saleItem = await saveDoc("saleItems", {
+    const product = state.products.find((row) => row.id === item.productId);
+    const saleItemPayload = {
       saleId: sale.id,
       productId: item.productId,
       name: item.name,
@@ -1769,10 +1770,17 @@ async function completeSale() {
       qty: item.qty,
       lineTotal: item.price * item.qty,
       date: sale.date
-    });
+    };
+    let saleItem;
+    try {
+      saleItem = await saveDoc("saleItems", { ...saleItemPayload, unitCost: landedCost(product) });
+    } catch (error) {
+      // Databases without the sale_items.unit_cost migration still accept the sale.
+      if (!String(error.message || "").includes("unit_cost")) throw error;
+      saleItem = await saveDoc("saleItems", saleItemPayload);
+    }
     savedItems.push(saleItem);
 
-    const product = state.products.find((row) => row.id === item.productId);
     await saveDoc("products", {
       ...product,
       stockQty: Number(product.stockQty || 0) - Number(item.qty || 0),
@@ -1904,11 +1912,47 @@ function resolveReturnProductType(row) {
   return productTypeById(row.productId) || (String(row.sku || "").startsWith("IA") ? "IA" : "HA");
 }
 
+function currentLandedCost(productId) {
+  return landedCost(state.products.find((item) => String(item.id) === String(productId)));
+}
+
+function unitCostOf(row) {
+  const stored = Number(row.unitCost);
+  return stored > 0 ? stored : currentLandedCost(row.productId);
+}
+
+function profitForType(type, saleItems, returns, damages) {
+  const typeSaleItems = saleItems.filter((item) => resolveItemProductType(item) === type);
+  const typeReturns = returns.filter((item) => resolveReturnProductType(item) === type);
+  const typeDamages = damages.filter((item) => resolveReturnProductType(item) === type);
+
+  const revenue = typeSaleItems.reduce((sum, item) => sum + Number(item.price || 0) * Number(item.qty || 0), 0);
+  const cogs = typeSaleItems.reduce((sum, item) => sum + unitCostOf(item) * Number(item.qty || 0), 0);
+  const returnRevenue = typeReturns.reduce((sum, item) => sum + returnRefundAmount(item), 0);
+  const returnCogs = typeReturns.reduce((sum, item) => sum + unitCostOf(item) * Number(item.qty || 0), 0);
+  const damageLoss = typeDamages.reduce(
+    (sum, item) => sum + (item.lossValue != null && item.lossValue !== "" ? Number(item.lossValue || 0) : unitCostOf(item) * Number(item.qty || 0)),
+    0
+  );
+
+  const netRevenue = revenue - returnRevenue;
+  const netCogs = cogs - returnCogs;
+  return {
+    revenue,
+    cogs,
+    returnRevenue,
+    returnCogs,
+    damageLoss,
+    profit: netRevenue - netCogs - damageLoss
+  };
+}
+
 function reportData(period = "month") {
   const sales = filterByPeriod(state.sales, period);
   const purchases = filterByPeriod(state.purchases, period);
   const expenses = filterByPeriod(state.expenses, period);
   const returns = filterByPeriod(state.stockReturns, period);
+  const damages = filterByPeriod(state.stockDamages, period);
   const saleIds = new Set(sales.map((sale) => sale.id));
   const saleItems = state.saleItems.filter((item) => saleIds.has(item.saleId));
   const receivables = state.credits.filter((item) => item.type === "receivable" && item.status !== "paid");
@@ -1941,10 +1985,12 @@ function reportData(period = "month") {
 
   const salesTotal = salesHa + salesIa;
   const purchaseTotal = purchasesHa + purchasesIa;
-  // Profit uses net sales (after returns). Unsold stock purchases are ignored when net sales are 0.
-  const profitHa = salesHa > 0 ? Math.abs(salesHa - purchasesHa) : 0;
-  const profitIa = salesIa > 0 ? Math.abs(salesIa - purchasesIa) : 0;
+  const profitDetailHa = profitForType("HA", saleItems, returns, damages);
+  const profitDetailIa = profitForType("IA", saleItems, returns, damages);
+  const profitHa = profitDetailHa.profit;
+  const profitIa = profitDetailIa.profit;
   const expenseTotal = expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const netProfit = profitHa + profitIa - expenseTotal;
   const receivableTotal = receivables.reduce((sum, item) => sum + Number(item.amount || 0) - Number(item.paidAmount || 0), 0);
   const payableTotal = payables.reduce((sum, item) => sum + Number(item.amount || 0) - Number(item.paidAmount || 0), 0);
   // Stock value uses current in-stock qty (returns already add stock back).
@@ -1966,7 +2012,10 @@ function reportData(period = "month") {
     purchasesIa,
     profitHa,
     profitIa,
+    profitDetailHa,
+    profitDetailIa,
     expenseTotal,
+    netProfit,
     receivableTotal,
     payableTotal,
     stockValue
@@ -1977,9 +2026,21 @@ function metricCard(label, value) {
   return `<div class="col-sm-6 col-xl-3"><div class="metric"><span>${label}</span><strong>${money(value)}</strong></div></div>`;
 }
 
-function metricCardPlain(label, value) {
-  const amount = Math.abs(Number(value || 0)).toLocaleString("en-US");
-  return `<div class="col-sm-6 col-xl-3"><div class="metric"><span>${label}</span><strong>${amount} MMK</strong></div></div>`;
+function metricCardProfit(label, value) {
+  const number = Number(value || 0);
+  const amount = `${number < 0 ? "-" : ""}${Math.abs(number).toLocaleString("en-US")}`;
+  return `<div class="col-sm-6 col-xl-3"><div class="metric"><span>${label}</span><strong class="${number < 0 ? "text-danger" : ""}">${amount} MMK</strong></div></div>`;
+}
+
+function profitExcelRows(type, detail) {
+  return [
+    [`Revenue ${type} (selling price × qty)`, excelMoney(detail.revenue)],
+    [`COGS ${type} (landed cost × qty)`, excelMoney(detail.cogs)],
+    [`Return log revenue ${type}`, excelMoney(detail.returnRevenue)],
+    [`Return log cost ${type}`, excelMoney(detail.returnCogs)],
+    [`Damage log loss ${type}`, excelMoney(detail.damageLoss)],
+    [`Profit ${type}`, excelMoney(detail.profit)]
+  ];
 }
 
 function reportPeriodLabel(period) {
@@ -2131,9 +2192,10 @@ async function exportReportExcel() {
       ["Purchase report HA", excelMoney(report.summary.purchasesHa)],
       ["Purchase report IA", excelMoney(report.summary.purchasesIa)],
       ["Purchase total", excelMoney(report.summary.purchaseTotal)],
-      ["Profit HA", Math.abs(excelMoney(report.summary.profitHa))],
-      ["Profit IA", Math.abs(excelMoney(report.summary.profitIa))],
+      ...profitExcelRows("HA", report.summary.profitDetailHa),
+      ...profitExcelRows("IA", report.summary.profitDetailIa),
       ["Expense total", excelMoney(report.summary.expenseTotal)],
+      ["Net profit", excelMoney(report.summary.netProfit)],
       ["Receivable balance", excelMoney(report.summary.receivableTotal)],
       ["Payable balance", excelMoney(report.summary.payableTotal)],
       ["Stock value", excelMoney(report.summary.stockValue)],
@@ -2279,12 +2341,13 @@ function renderReports() {
     metricCard("Sales report IA", data.salesIa),
     metricCard("Purchase report HA", data.purchasesHa),
     metricCard("Purchase report IA", data.purchasesIa),
-    metricCardPlain("Profit HA", data.profitHa),
-    metricCardPlain("Profit IA", data.profitIa),
+    metricCardProfit("Profit HA", data.profitHa),
+    metricCardProfit("Profit IA", data.profitIa),
     metricCard("Stock report", data.stockValue),
     metricCard("Credit to receive", data.receivableTotal),
     metricCard("Credit to pay", data.payableTotal),
     metricCard("Expenses report", data.expenseTotal),
+    metricCardProfit("Net profit", data.netProfit),
     `<div class="col-sm-6 col-xl-3"><div class="metric"><span>Sales count</span><strong>${report.sales.length}</strong></div></div>`
   ].join("");
 

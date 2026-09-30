@@ -95,8 +95,11 @@ create table if not exists sale_items (
   price numeric,
   qty numeric,
   line_total numeric,
+  unit_cost numeric default 0,
   date timestamptz default now()
 );
+
+alter table sale_items add column if not exists unit_cost numeric default 0;
 
 create table if not exists credits (
   id uuid primary key default gen_random_uuid(),
