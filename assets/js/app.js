@@ -1474,7 +1474,6 @@ function fillProductForm(product) {
   qs("#product-batch-cogs").value = 0;
   qs("#product-qty").value = isEdit ? 1 : 1;
   qs("#product-margin").value = product?.marginPercent ?? "";
-  qs("#product-payment").value = "paid";
   qs("#product-payment-type").value = "cash";
   qs("#product-new-supplier").value = "";
   qs("#product-image").value = "";
@@ -1557,6 +1556,7 @@ async function saveProduct(event) {
 
     if (qty > 0) {
       const total = qty * unitCost + batchCogs;
+      const paymentType = qs("#product-payment-type").value || "cash";
       const purchase = await saveDoc("purchases", {
         date: nowIso(),
         supplierId: supplier.id,
@@ -1568,8 +1568,8 @@ async function saveProduct(event) {
         batchCogs,
         cogsPerUnit,
         total,
-        paymentStatus: qs("#product-payment").value,
-        paymentType: qs("#product-payment-type").value || "cash"
+        paymentStatus: paymentType === "credit" ? "payable" : "paid",
+        paymentType
       });
 
       if (purchase.paymentStatus === "payable") {
@@ -1719,7 +1719,7 @@ function paymentTypeLabel(type) {
     cash: "Cash",
     kpay: "KPay",
     kbz: "KBZ Mobile Banking",
-    credit: "Credit sale"
+    credit: "Credit Sale"
   };
   return labels[type] || type || "-";
 }

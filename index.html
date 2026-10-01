@@ -154,10 +154,10 @@
                 <input id="customer-name" class="form-control mb-3" placeholder="Optional">
                 <label class="form-label" for="payment-type">Payment type</label>
                 <select id="payment-type" class="form-select mb-3">
-                  <option value="cash">Cash / paid now</option>
+                  <option value="cash">Cash / Paid now</option>
                   <option value="kpay">KPay</option>
                   <option value="kbz">KBZ Mobile Banking</option>
-                  <option value="credit">Credit sale</option>
+                  <option value="credit">Credit</option>
                 </select>
                 <button id="checkout-btn" class="btn btn-success btn-lg w-100" type="button">Complete Sale</button>
                 <div id="receipt-preview" class="receipt mt-4"></div>
@@ -458,7 +458,7 @@
             <div class="col-md-3">
               <label class="form-label" for="credit-payment-type">Payment type</label>
               <select id="credit-payment-type" class="form-select">
-                <option value="cash">Cash</option>
+                <option value="cash">Cash / Paid now</option>
                 <option value="kpay">KPay</option>
                 <option value="kbz">KBZ Mobile Banking</option>
               </select>
@@ -629,20 +629,12 @@
                 </select>
               </div>
               <div class="col-6">
-                <label class="form-label" for="product-payment">Payment</label>
-                <select id="product-payment" class="form-select">
-                  <option value="paid">Paid</option>
-                  <option value="payable">Payable</option>
-                </select>
-              </div>
-            </div>
-            <div class="row g-3">
-              <div class="col-6">
                 <label class="form-label" for="product-payment-type">Payment type</label>
                 <select id="product-payment-type" class="form-select">
-                  <option value="cash">Cash</option>
+                  <option value="cash">Cash / Paid now</option>
                   <option value="kpay">KPay</option>
                   <option value="kbz">KBZ Mobile Banking</option>
+                  <option value="credit">Credit</option>
                 </select>
               </div>
             </div>
@@ -781,6 +773,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
-    <script type="module" src="assets/js/app.js?v=20250930losssign"></script>
+    <script type="module" src="assets/js/app.js?v=20251001creditfix"></script>
   </body>
 </html>
