@@ -515,20 +515,28 @@
             </div>
           </div>
           <div class="panel">
-            <div class="row g-3 mb-3">
-              <div class="col-md-4">
-                <label class="form-label" for="report-period">Period</label>
-                <select id="report-period" class="form-select">
-                  <option value="month">This month</option>
-                  <option value="year">This year</option>
-                  <option value="all">All time</option>
+            <div class="row g-3 mb-2 align-items-end">
+              <div class="col-sm-6 col-lg-3">
+                <label class="form-label" for="report-from">From date</label>
+                <input id="report-from" class="form-control" type="date">
+              </div>
+              <div class="col-sm-6 col-lg-3">
+                <label class="form-label" for="report-to">To date</label>
+                <input id="report-to" class="form-control" type="date">
+              </div>
+              <div class="col-sm-6 col-lg-3">
+                <label class="form-label" for="report-type">Type</label>
+                <select id="report-type" class="form-select">
+                  <option value="all">All types</option>
+                  <option value="HA">HA</option>
+                  <option value="IA">IA</option>
                 </select>
               </div>
-              <div class="col-md-4 d-flex align-items-end gap-2">
-                <button id="build-report" class="btn btn-primary" type="button">Build Report</button>
+              <div class="col-sm-6 col-lg-3 d-flex gap-2">
                 <button id="export-report-excel" class="btn btn-outline-success" type="button">Export Excel</button>
               </div>
             </div>
+            <div id="reports-filter-summary" class="small text-muted mb-3"></div>
             <div id="reports-output" class="row g-3 mb-4"></div>
             <div id="reports-detail"></div>
           </div>
@@ -773,6 +781,6 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
-    <script type="module" src="assets/js/app.js?v=20251001creditfix"></script>
+    <script type="module" src="assets/js/app.js?v=20251001noperiod"></script>
   </body>
 </html>

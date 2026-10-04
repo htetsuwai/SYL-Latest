@@ -1881,13 +1881,20 @@ function renderExpenses() {
   `).join("");
 }
 
-function filterByPeriod(rows, period) {
-  if (period === "all") return rows;
-  const now = new Date();
+function reportDateRange(filter) {
+  const start = filter.from ? new Date(`${filter.from}T00:00:00`) : null;
+  const end = filter.to ? new Date(`${filter.to}T00:00:00`) : null;
+  if (end) end.setDate(end.getDate() + 1);
+  return { start, end };
+}
+
+function filterByPeriod(rows, filter) {
+  const { start, end } = reportDateRange(filter);
+  if (!start && !end) return rows;
   return rows.filter((row) => {
     const date = new Date(row.date);
-    if (period === "year") return date.getFullYear() === now.getFullYear();
-    return date.getFullYear() === now.getFullYear() && date.getMonth() === now.getMonth();
+    if (Number.isNaN(date.getTime())) return false;
+    return (!start || date >= start) && (!end || date < end);
   });
 }
 
@@ -1947,16 +1954,29 @@ function profitForType(type, saleItems, returns, damages) {
   };
 }
 
-function reportData(period = "month") {
-  const sales = filterByPeriod(state.sales, period);
-  const purchases = filterByPeriod(state.purchases, period);
-  const expenses = filterByPeriod(state.expenses, period);
-  const returns = filterByPeriod(state.stockReturns, period);
-  const damages = filterByPeriod(state.stockDamages, period);
-  const saleIds = new Set(sales.map((sale) => sale.id));
-  const saleItems = state.saleItems.filter((item) => saleIds.has(item.saleId));
-  const receivables = state.credits.filter((item) => item.type === "receivable" && item.status !== "paid");
-  const payables = state.credits.filter((item) => item.type === "payable" && item.status !== "paid");
+function reportRows(filter) {
+  const includesType = (type) => filter.type === "all" || filter.type === type;
+  const periodSales = filterByPeriod(state.sales, filter);
+  const saleIds = new Set(periodSales.map((sale) => sale.id));
+  const saleItems = state.saleItems.filter((item) => saleIds.has(item.saleId) && includesType(resolveItemProductType(item)));
+  const typedSaleIds = new Set(saleItems.map((item) => item.saleId));
+
+  return {
+    sales: filter.type === "all" ? periodSales : periodSales.filter((sale) => typedSaleIds.has(sale.id)),
+    saleItems,
+    purchases: filterByPeriod(state.purchases, filter).filter((item) => includesType(productTypeById(item.productId) || "HA")),
+    expenses: filterByPeriod(state.expenses, filter),
+    returns: filterByPeriod(state.stockReturns, filter).filter((item) => includesType(resolveReturnProductType(item))),
+    damages: filterByPeriod(state.stockDamages, filter).filter((item) => includesType(resolveReturnProductType(item))),
+    credits: filterByPeriod(state.credits, filter),
+    products: state.products.filter((item) => includesType(item.type || "HA"))
+  };
+}
+
+function reportData(filter = getReportFilter()) {
+  const { saleItems, purchases, expenses, returns, damages, credits, products } = reportRows(filter);
+  const receivables = credits.filter((item) => item.type === "receivable" && item.status !== "paid");
+  const payables = credits.filter((item) => item.type === "payable" && item.status !== "paid");
 
   const grossSalesHa = saleItems
     .filter((item) => resolveItemProductType(item) === "HA")
@@ -1994,7 +2014,7 @@ function reportData(period = "month") {
   const receivableTotal = receivables.reduce((sum, item) => sum + Number(item.amount || 0) - Number(item.paidAmount || 0), 0);
   const payableTotal = payables.reduce((sum, item) => sum + Number(item.amount || 0) - Number(item.paidAmount || 0), 0);
   // Stock value uses current in-stock qty (returns already add stock back).
-  const stockValue = state.products.reduce(
+  const stockValue = products.reduce(
     (sum, item) => sum + Number(item.stockQty || 0) * (Number(item.cost || 0) + Number(item.cogs || 0)),
     0
   );
@@ -2043,24 +2063,33 @@ function profitExcelRows(type, detail) {
   ];
 }
 
-function reportPeriodLabel(period) {
-  if (period === "year") return "This year";
-  if (period === "all") return "All time";
-  return "This month";
+function reportPeriodLabel(filter) {
+  if (filter.from && filter.to) return `${filter.from} to ${filter.to}`;
+  if (filter.from) return `From ${filter.from}`;
+  if (filter.to) return `Up to ${filter.to}`;
+  return "All time";
 }
 
-function getReportPeriod() {
-  return qs("#report-period")?.value || "month";
+function reportTypeLabel(type) {
+  if (type === "HA") return "HA only";
+  if (type === "IA") return "IA only";
+  return "All types";
 }
 
-function buildDetailedReport(period = "month") {
-  const summary = reportData(period);
-  const sales = filterByPeriod(state.sales, period);
-  const purchases = filterByPeriod(state.purchases, period);
-  const expenses = filterByPeriod(state.expenses, period);
-  const returns = filterByPeriod(state.stockReturns, period);
-  const saleIds = new Set(sales.map((sale) => sale.id));
-  const saleItems = state.saleItems.filter((item) => saleIds.has(item.saleId));
+function getReportFilter() {
+  let from = qs("#report-from")?.value || "";
+  let to = qs("#report-to")?.value || "";
+  if (from && to && from > to) [from, to] = [to, from];
+  return {
+    from,
+    to,
+    type: qs("#report-type")?.value || "all"
+  };
+}
+
+function buildDetailedReport(filter = getReportFilter()) {
+  const summary = reportData(filter);
+  const { sales, saleItems, purchases, expenses, returns, credits } = reportRows(filter);
   const salesById = Object.fromEntries(sales.map((sale) => [sale.id, sale]));
   const saleItemsHa = saleItems.filter((item) => resolveItemProductType(item) === "HA");
   const saleItemsIa = saleItems.filter((item) => resolveItemProductType(item) === "IA");
@@ -2070,8 +2099,9 @@ function buildDetailedReport(period = "month") {
   const returnsIa = returns.filter((item) => resolveReturnProductType(item) === "IA");
 
   return {
-    period,
-    periodLabel: reportPeriodLabel(period),
+    filter,
+    periodLabel: reportPeriodLabel(filter),
+    typeLabel: reportTypeLabel(filter.type),
     generatedAt: new Date().toLocaleString(),
     summary,
     sales,
@@ -2086,7 +2116,7 @@ function buildDetailedReport(period = "month") {
     returnsHa,
     returnsIa,
     expenses,
-    credits: state.credits
+    credits
   };
 }
 
@@ -2170,7 +2200,10 @@ function appendExcelSheet(workbook, XLSX, name, rows) {
 }
 
 async function exportReportExcel() {
-  const report = buildDetailedReport(getReportPeriod());
+  const report = buildDetailedReport(getReportFilter());
+  const showHa = report.filter.type !== "IA";
+  const showIa = report.filter.type !== "HA";
+  const summary = report.summary;
 
   try {
     const XLSX = await import("https://esm.sh/xlsx@0.18.5");
@@ -2179,38 +2212,47 @@ async function exportReportExcel() {
     appendExcelSheet(workbook, XLSX, "Summary", [
       ["Electronics Shop POS Report"],
       ["Period", report.periodLabel],
+      ["Type", report.typeLabel],
       ["Generated", report.generatedAt],
       [],
       ["Metric", "Amount (MMK)"],
-      ["Gross sales HA", excelMoney(report.summary.grossSalesHa)],
-      ["Returns HA", excelMoney(report.summary.returnsHa)],
-      ["Sales report HA (net)", excelMoney(report.summary.salesHa)],
-      ["Gross sales IA", excelMoney(report.summary.grossSalesIa)],
-      ["Returns IA", excelMoney(report.summary.returnsIa)],
-      ["Sales report IA (net)", excelMoney(report.summary.salesIa)],
-      ["Sales total (net)", excelMoney(report.summary.salesTotal)],
-      ["Purchase report HA", excelMoney(report.summary.purchasesHa)],
-      ["Purchase report IA", excelMoney(report.summary.purchasesIa)],
-      ["Purchase total", excelMoney(report.summary.purchaseTotal)],
-      ...profitExcelRows("HA", report.summary.profitDetailHa),
-      ...profitExcelRows("IA", report.summary.profitDetailIa),
-      ["Expense total", excelMoney(report.summary.expenseTotal)],
-      ["Net profit", excelMoney(report.summary.netProfit)],
-      ["Receivable balance", excelMoney(report.summary.receivableTotal)],
-      ["Payable balance", excelMoney(report.summary.payableTotal)],
-      ["Stock value", excelMoney(report.summary.stockValue)],
+      ...(showHa ? [
+        ["Gross sales HA", excelMoney(summary.grossSalesHa)],
+        ["Returns HA", excelMoney(summary.returnsHa)],
+        ["Sales report HA (net)", excelMoney(summary.salesHa)]
+      ] : []),
+      ...(showIa ? [
+        ["Gross sales IA", excelMoney(summary.grossSalesIa)],
+        ["Returns IA", excelMoney(summary.returnsIa)],
+        ["Sales report IA (net)", excelMoney(summary.salesIa)]
+      ] : []),
+      ["Sales total (net)", excelMoney(summary.salesTotal)],
+      ...(showHa ? [["Purchase report HA", excelMoney(summary.purchasesHa)]] : []),
+      ...(showIa ? [["Purchase report IA", excelMoney(summary.purchasesIa)]] : []),
+      ["Purchase total", excelMoney(summary.purchaseTotal)],
+      ...(showHa ? profitExcelRows("HA", summary.profitDetailHa) : []),
+      ...(showIa ? profitExcelRows("IA", summary.profitDetailIa) : []),
+      ["Expense total", excelMoney(summary.expenseTotal)],
+      ["Net profit", excelMoney(summary.netProfit)],
+      ["Receivable balance", excelMoney(summary.receivableTotal)],
+      ["Payable balance", excelMoney(summary.payableTotal)],
+      ["Stock value", excelMoney(summary.stockValue)],
       [],
       ["Sales count", report.sales.length],
-      ["Sale items HA", report.saleItemsHa.length],
-      ["Sale items IA", report.saleItemsIa.length],
-      ["Returns HA count", report.returnsHa.length],
-      ["Returns IA count", report.returnsIa.length],
-      ["Purchases HA", report.purchasesHa.length],
-      ["Purchases IA", report.purchasesIa.length],
+      ...(showHa ? [
+        ["Sale items HA", report.saleItemsHa.length],
+        ["Returns HA count", report.returnsHa.length],
+        ["Purchases HA", report.purchasesHa.length]
+      ] : []),
+      ...(showIa ? [
+        ["Sale items IA", report.saleItemsIa.length],
+        ["Returns IA count", report.returnsIa.length],
+        ["Purchases IA", report.purchasesIa.length]
+      ] : []),
       ["Expenses count", report.expenses.length]
     ]);
 
-    appendExcelSheet(workbook, XLSX, "Returns HA", [
+    if (showHa) appendExcelSheet(workbook, XLSX, "Returns HA", [
       ["Date", "Product", "SKU", "Qty", "Refund (MMK)", "Customer", "Note"],
       ...report.returnsHa.map((row) => [
         new Date(row.date).toLocaleDateString(),
@@ -2223,7 +2265,7 @@ async function exportReportExcel() {
       ])
     ]);
 
-    appendExcelSheet(workbook, XLSX, "Returns IA", [
+    if (showIa) appendExcelSheet(workbook, XLSX, "Returns IA", [
       ["Date", "Product", "SKU", "Qty", "Refund (MMK)", "Customer", "Note"],
       ...report.returnsIa.map((row) => [
         new Date(row.date).toLocaleDateString(),
@@ -2236,7 +2278,7 @@ async function exportReportExcel() {
       ])
     ]);
 
-    appendExcelSheet(workbook, XLSX, "Sales HA", [
+    if (showHa) appendExcelSheet(workbook, XLSX, "Sales HA", [
       ["Date", "Receipt", "Product", "Barcode", "Unit", "Qty", "Price (MMK)", "Line total (MMK)"],
       ...report.saleItemsHa.map((item) => {
         const sale = report.salesById[item.saleId];
@@ -2253,7 +2295,7 @@ async function exportReportExcel() {
       })
     ]);
 
-    appendExcelSheet(workbook, XLSX, "Sales IA", [
+    if (showIa) appendExcelSheet(workbook, XLSX, "Sales IA", [
       ["Date", "Receipt", "Product", "Barcode", "Unit", "Qty", "Price (MMK)", "Line total (MMK)"],
       ...report.saleItemsIa.map((item) => {
         const sale = report.salesById[item.saleId];
@@ -2270,7 +2312,7 @@ async function exportReportExcel() {
       })
     ]);
 
-    appendExcelSheet(workbook, XLSX, "Purchases HA", [
+    if (showHa) appendExcelSheet(workbook, XLSX, "Purchases HA", [
       ["Date", "Supplier", "Product", "Qty", "Unit cost (MMK)", "Batch COGS (MMK)", "Total (MMK)", "Payment", "Payment type"],
       ...report.purchasesHa.map((purchase) => [
         new Date(purchase.date).toLocaleDateString(),
@@ -2285,7 +2327,7 @@ async function exportReportExcel() {
       ])
     ]);
 
-    appendExcelSheet(workbook, XLSX, "Purchases IA", [
+    if (showIa) appendExcelSheet(workbook, XLSX, "Purchases IA", [
       ["Date", "Supplier", "Product", "Qty", "Unit cost (MMK)", "Batch COGS (MMK)", "Total (MMK)", "Payment", "Payment type"],
       ...report.purchasesIa.map((purchase) => [
         new Date(purchase.date).toLocaleDateString(),
@@ -2323,7 +2365,10 @@ async function exportReportExcel() {
       ])
     ]);
 
-    const fileName = `electronics-pos-report-${report.period}-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    const periodSlug = report.filter.from || report.filter.to
+      ? `${report.filter.from || "start"}_${report.filter.to || "today"}`
+      : "all-time";
+    const fileName = `electronics-pos-report-${periodSlug}-${report.filter.type}-${new Date().toISOString().slice(0, 10)}.xlsx`;
     XLSX.writeFile(workbook, fileName);
     showToast("Report exported to Excel.");
   } catch (error) {
@@ -2332,24 +2377,28 @@ async function exportReportExcel() {
 }
 
 function renderReports() {
-  const period = getReportPeriod();
-  const report = buildDetailedReport(period);
+  const report = buildDetailedReport(getReportFilter());
   const data = report.summary;
+  const showHa = report.filter.type !== "IA";
+  const showIa = report.filter.type !== "HA";
+
+  const summaryEl = qs("#reports-filter-summary");
+  if (summaryEl) summaryEl.textContent = `Showing: ${report.periodLabel} · ${report.typeLabel}`;
 
   qs("#reports-output").innerHTML = [
-    metricCard("Sales report HA", data.salesHa),
-    metricCard("Sales report IA", data.salesIa),
-    metricCard("Purchase report HA", data.purchasesHa),
-    metricCard("Purchase report IA", data.purchasesIa),
-    metricCardProfit("Profit HA", data.profitHa),
-    metricCardProfit("Profit IA", data.profitIa),
+    showHa && metricCard("Sales report HA", data.salesHa),
+    showIa && metricCard("Sales report IA", data.salesIa),
+    showHa && metricCard("Purchase report HA", data.purchasesHa),
+    showIa && metricCard("Purchase report IA", data.purchasesIa),
+    showHa && metricCardProfit("Profit HA", data.profitHa),
+    showIa && metricCardProfit("Profit IA", data.profitIa),
     metricCard("Stock report", data.stockValue),
     metricCard("Credit to receive", data.receivableTotal),
     metricCard("Credit to pay", data.payableTotal),
     metricCard("Expenses report", data.expenseTotal),
     metricCardProfit("Net profit", data.netProfit),
     `<div class="col-sm-6 col-xl-3"><div class="metric"><span>Sales count</span><strong>${report.sales.length}</strong></div></div>`
-  ].join("");
+  ].filter(Boolean).join("");
 
   const detailEl = qs("#reports-detail");
   if (detailEl) detailEl.innerHTML = "";
@@ -2686,9 +2735,10 @@ function bindEvents() {
     if (editId) openDamageEditModal(editId);
     if (deleteId) deleteDamageRecord(deleteId);
   });
-  qs("#build-report").addEventListener("click", renderReports);
   qs("#export-report-excel").addEventListener("click", exportReportExcel);
-  qs("#report-period").addEventListener("change", renderReports);
+  ["#report-from", "#report-to", "#report-type"].forEach((selector) => {
+    qs(selector).addEventListener("change", renderReports);
+  });
 }
 
 async function restoreSession(user) {
