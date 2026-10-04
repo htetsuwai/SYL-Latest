@@ -1,6 +1,14 @@
 [build]
   publish = "."
 
+# Proxy Auth + REST through Netlify so browsers never call *.supabase.co
+# (needed when ISPs block Supabase; keep this rule above the SPA fallback).
+[[redirects]]
+  from = "/supabase/*"
+  to = "https://lxtdrcfliprknmickpad.supabase.co/:splat"
+  status = 200
+  force = true
+
 # Existing files (JS/CSS) are served as-is. Only missing paths fall back to the app shell.
 [[redirects]]
   from = "/*"

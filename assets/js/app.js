@@ -1,4 +1,4 @@
-import { supabaseConfig, demoUser } from "./supabase-config.js";
+import { supabaseConfig, demoUser } from "./supabase-config.js?v=20251004proxy";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const TABLE_BY_COLLECTION = {
