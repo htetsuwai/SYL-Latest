@@ -118,6 +118,12 @@ h1, h2, h3, .navbar-brand {
 }
 
 /* Auth */
+.boot-screen {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+}
+
 .auth-screen {
   min-height: 100vh;
   display: grid;

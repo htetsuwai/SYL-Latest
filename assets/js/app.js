@@ -1,4 +1,4 @@
-import { supabaseConfig, demoUser } from "./supabase-config.js?v=20251004proxy";
+import { supabaseConfig, demoUser } from "./supabase-config.js?v=20251005localdev";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const TABLE_BY_COLLECTION = {
@@ -1004,8 +1004,7 @@ function leaveApp(message = "Signed out. Sign in again to continue.") {
   state.stockReturns = [];
   state.settings = { ...DEFAULT_SETTINGS };
 
-  qs("#app-shell").classList.add("d-none");
-  qs("#auth-screen").classList.remove("d-none");
+  showAuthScreen();
   qs("#login-password").value = "";
   qs("#auth-message").textContent = message;
   location.hash = "";
@@ -1034,8 +1033,24 @@ async function signOutUser() {
   }
 }
 
+function friendlyAuthError(error) {
+  const message = String(error?.message || "");
+  // An HTML page instead of JSON means /supabase was served by the SPA fallback, not proxied.
+  if (message.includes("Unexpected token '<'") || message.includes("is not valid JSON")) {
+    return "Cannot reach the Supabase proxy. Redeploy the Netlify site so netlify.toml (the /supabase/* rule) is active.";
+  }
+  return message || "Could not sign in.";
+}
+
+function showAuthScreen() {
+  qs("#boot-screen").classList.add("d-none");
+  qs("#app-shell").classList.add("d-none");
+  qs("#auth-screen").classList.remove("d-none");
+}
+
 async function enterApp(profile) {
   state.user = profile;
+  qs("#boot-screen").classList.add("d-none");
   qs("#auth-screen").classList.add("d-none");
   qs("#app-shell").classList.remove("d-none");
   applyRole();
@@ -2503,7 +2518,7 @@ function bindEvents() {
       const profile = await getUserProfile(data.user);
       await enterApp(profile);
     } catch (error) {
-      qs("#auth-message").textContent = error.message;
+      qs("#auth-message").textContent = friendlyAuthError(error);
     } finally {
       state.handlingLogin = false;
       setLoginLoading(false);
@@ -2749,7 +2764,8 @@ async function restoreSession(user) {
     const profile = await getUserProfile(user);
     await enterApp(profile);
   } catch (error) {
-    qs("#auth-message").textContent = error.message || "Could not restore session. Please sign in.";
+    showAuthScreen();
+    qs("#auth-message").textContent = friendlyAuthError(error) || "Could not restore session. Please sign in.";
     setLoginLoading(false);
     try {
       await supabase.auth.signOut({ scope: "local" });
@@ -2772,11 +2788,13 @@ function initSupabase() {
 
     if (event === "SIGNED_OUT") {
       if (state.user) leaveApp();
+      else showAuthScreen();
       setLoginLoading(false);
       return;
     }
 
     if (!session?.user) {
+      if (!state.user) showAuthScreen();
       setLoginLoading(false);
       return;
     }
@@ -2802,7 +2820,12 @@ function init() {
   const authMessage = qs("#auth-message");
   if (state.isSupabaseReady) {
     authMessage.textContent = "Connected to Supabase. Sign in with your shop email and password.";
+    // Don't leave users on the loading screen if the session check never answers.
+    setTimeout(() => {
+      if (!state.user && !qs("#boot-screen").classList.contains("d-none")) showAuthScreen();
+    }, 10000);
   } else {
+    showAuthScreen();
     authMessage.innerHTML = "Configure Supabase in <code>assets/js/supabase-config.js</code>. Demo mode is used until real config is added.";
     qs("#login-email").value = demoUser.email;
     qs("#login-password").value = "demo";

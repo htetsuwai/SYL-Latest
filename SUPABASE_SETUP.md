@@ -93,10 +93,9 @@ Password login does not require email redirects, but this avoids future auth URL
 
 ### Local development
 
-`/supabase` only works when Netlify’s proxy rules run:
+On `localhost`, `127.0.0.1` or a `file:` page there is no Netlify proxy, so `supabase-config.js` automatically talks to `https://YOUR_PROJECT.supabase.co` directly. In Myanmar that needs a VPN while developing. Deployed Netlify sites always use the `/supabase` proxy.
 
-- Prefer: `npx netlify-cli dev` (uses `netlify.toml` redirects), or
-- Temporarily set `supabaseConfig.url` to `https://YOUR_PROJECT.supabase.co` while developing with a VPN
+If login on the deployed site says **Unexpected token '<'** or **Cannot reach the Supabase proxy**, Netlify is serving `index.html` for `/supabase/...`: check `netlify.toml` is in the published root and redeploy.
 
 ### Verify after deploy (no VPN)
 
