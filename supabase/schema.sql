@@ -56,7 +56,7 @@ alter table products add column if not exists brand text;
 create table if not exists purchases (
   id uuid primary key default gen_random_uuid(),
   date timestamptz default now(),
-  supplier_id uuid references suppliers(id),
+  supplier_id uuid references suppliers(id) on delete set null,
   supplier_name text,
   product_id uuid references products(id),
   product_name text,
@@ -70,6 +70,17 @@ create table if not exists purchases (
 );
 
 alter table purchases add column if not exists payment_type text default 'cash';
+
+-- Allow deleting suppliers that still appear on old purchase rows.
+do $$
+begin
+  alter table purchases drop constraint if exists purchases_supplier_id_fkey;
+  alter table purchases
+    add constraint purchases_supplier_id_fkey
+    foreign key (supplier_id) references suppliers(id) on delete set null;
+exception
+  when duplicate_object then null;
+end $$;
 
 create table if not exists sales (
   id uuid primary key default gen_random_uuid(),

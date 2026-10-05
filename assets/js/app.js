@@ -1461,6 +1461,28 @@ function renderSuppliersTable() {
   `).join("");
 }
 
+async function unlinkPurchasesFromSupplier(supplierId) {
+  if (!state.isSupabaseReady) {
+    const db = localDb();
+    db.purchases = (db.purchases || []).map((purchase) =>
+      String(purchase.supplierId) === String(supplierId) ? { ...purchase, supplierId: null } : purchase
+    );
+    saveLocalDb(db);
+    return;
+  }
+
+  const { error } = await supabase
+    .from("purchases")
+    .update({ supplier_id: null })
+    .eq("supplier_id", supplierId);
+  throwIfError(error);
+}
+
+async function deleteSupplier(supplierId) {
+  await unlinkPurchasesFromSupplier(supplierId);
+  await removeDoc("suppliers", supplierId);
+}
+
 function toggleNewSupplierField() {
   const isNew = qs("#product-supplier").value === "__new__";
   qs("#new-supplier-wrap").classList.toggle("d-none", !isNew);
@@ -2697,13 +2719,22 @@ function bindEvents() {
   qs("#reset-supplier-form").addEventListener("click", () => fillSupplierForm());
 
   qs("#suppliers-body").addEventListener("click", async (event) => {
-    const editId = event.target.dataset.editSupplier;
-    const deleteId = event.target.dataset.deleteSupplier;
-    if (editId) fillSupplierForm(state.suppliers.find((supplier) => supplier.id === editId));
-    if (deleteId && confirm("Delete this supplier?")) {
-      await removeDoc("suppliers", deleteId);
+    const editBtn = event.target.closest("[data-edit-supplier]");
+    const deleteBtn = event.target.closest("[data-delete-supplier]");
+    const editId = editBtn?.dataset.editSupplier;
+    const deleteId = deleteBtn?.dataset.deleteSupplier;
+    if (editId) {
+      fillSupplierForm(state.suppliers.find((supplier) => String(supplier.id) === String(editId)));
+      return;
+    }
+    if (!deleteId || !confirm("Delete this supplier? Purchase history will keep the supplier name.")) return;
+    try {
+      await deleteSupplier(deleteId);
+      fillSupplierForm();
       await loadData();
       showToast("Supplier deleted.");
+    } catch (error) {
+      showToast(error.message || "Could not delete supplier.");
     }
   });
   qs("#credit-payment-form").addEventListener("submit", recordCreditPayment);
