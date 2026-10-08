@@ -37,23 +37,20 @@ values (
 
 Without a `profiles` row, login will fail with: **User profile not found**.
 
-## 5. Configure the app
+## 5. Configure Netlify (keys stay on the server)
 
-Edit [`assets/js/supabase-config.js`](assets/js/supabase-config.js):
+Do not put the Supabase URL or anon key in the website files.
 
-```js
-export const supabaseConfig = {
-  // Same-origin proxy (see Netlify section). Do not put *.supabase.co here for production.
-  url: `${typeof location !== "undefined" ? location.origin : ""}/supabase`,
-  anonKey: "YOUR_ANON_PUBLIC_KEY"
-};
-```
+In Netlify → **Site configuration** → **Environment variables**, add:
 
-Get the **anon public** key from **Project Settings** → **API**.
+- `SUPABASE_URL` = Project URL from Supabase → Project Settings → API
+- `SUPABASE_ANON_KEY` = the **anon public** key from the same page
 
-Put the real project URL only in [`netlify.toml`](netlify.toml) (proxy target). Use only the **anon public** key in the frontend. Never put the **service role** key in the browser.
+Use only the anon key. Never add the service role key.
 
-When `anonKey` is set (not starting with `PASTE_`), the app leaves demo mode and uses live Supabase auth + data through the proxy.
+The browser calls `/supabase` on your site. The edge function in `netlify/edge-functions/supabase-proxy.js` adds the key on the server.
+
+Redeploy after saving the variables.
 
 ## 6. Create sales users
 
@@ -67,20 +64,10 @@ values ('SALES-UUID', 'sales@yourshop.com', 'Sales Staff', 'sales');
 
 ## 7. Deploy to Netlify (Supabase proxy)
 
-Browsers in Myanmar often cannot reach `*.supabase.co`. This app proxies Auth + REST through Netlify instead.
+Browsers in Myanmar often cannot reach `*.supabase.co`. This app calls `/supabase` on your Netlify site. The edge function forwards that to Supabase and adds the key from the environment variables in section 5.
 
-1. In [`netlify.toml`](netlify.toml), keep the proxy rule **above** the SPA fallback:
-
-```toml
-[[redirects]]
-  from = "/supabase/*"
-  to = "https://YOUR_PROJECT.supabase.co/:splat"
-  status = 200
-  force = true
-```
-
-2. Publish directory: `.` — no build command needed.
-3. Redeploy after changing `supabase-config.js` or `netlify.toml`.
+1. Publish directory: `.` — no build command needed.
+2. Set `SUPABASE_URL` and `SUPABASE_ANON_KEY`, then redeploy.
 
 ### Supabase dashboard URLs
 
@@ -93,20 +80,26 @@ Password login does not require email redirects, but this avoids future auth URL
 
 ### Local development
 
-On `localhost`, `127.0.0.1` or a `file:` page there is no Netlify proxy, so `supabase-config.js` automatically talks to `https://YOUR_PROJECT.supabase.co` directly. In Myanmar that needs a VPN while developing. Deployed Netlify sites always use the `/supabase` proxy.
+Sign-in works on the deployed Netlify site, or locally with `npx netlify-cli dev` after the same environment variables are set. Opening the files directly does not have the proxy, so login will not reach Supabase.
 
-If login on the deployed site says **Unexpected token '<'** or **Cannot reach the Supabase proxy**, Netlify is serving `index.html` for `/supabase/...`: check `netlify.toml` is in the published root and redeploy.
+If login says **Unexpected token '<'** or **Cannot reach the Supabase proxy**, `/supabase` is being served as the app page. Confirm the edge function is deployed and the environment variables exist, then redeploy.
 
 ### Verify after deploy (no VPN)
 
 1. Open the Netlify site in Myanmar without VPN.
 2. Login, load products, complete a sale.
 3. In DevTools → Network, confirm requests go to `yoursite/.../supabase/auth/v1/...` and `.../supabase/rest/v1/...`.
-4. Confirm there are **no** requests to `*.supabase.co`.
+4. Confirm there are **no** requests to `*.supabase.co`, and the page source does not contain the anon key.
 
-## Demo mode
+### Database extras for this version
 
-If `anonKey` still starts with `PASTE_`, the app uses local browser storage and demo login (`admin@example.com` / any password).
+If the schema was already applied, run this in the SQL Editor as well:
+
+```sql
+alter table products add column if not exists price_locked boolean default false;
+```
+
+Then run the `protect_product_prices` function and trigger from [`supabase/schema.sql`](supabase/schema.sql) so sales staff can change stock but not prices.
 
 ## Quick checklist
 
@@ -114,8 +107,7 @@ If `anonKey` still starts with `PASTE_`, the app uses local browser storage and 
 - [ ] Email auth enabled (confirm email off for testing)
 - [ ] Auth user created
 - [ ] Matching `profiles` row with `admin` or `sales`
-- [ ] `supabase-config.js` has anon key + same-origin `/supabase` URL
-- [ ] `netlify.toml` proxies `/supabase/*` to your project
+- [ ] Netlify has `SUPABASE_URL` and `SUPABASE_ANON_KEY` (not in the website files)
 - [ ] Netlify site URL added in Supabase Auth URL settings
-- [ ] Login screen says: **Connected to Supabase**
 - [ ] Without VPN: Network tab shows `/supabase/...` only (no `supabase.co`)
+- [ ] Page source has no anon key and the login form does not show a password

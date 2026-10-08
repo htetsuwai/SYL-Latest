@@ -1,4 +1,4 @@
-import { supabaseConfig, demoUser } from "./supabase-config.js?v=20251005localdev";
+import { supabaseConfig, demoUser } from "./supabase-config.js?v=20251008secure";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 
 const TABLE_BY_COLLECTION = {
@@ -768,9 +768,19 @@ async function listDocs(collectionName) {
   if (!state.isSupabaseReady) return localDb()[collectionName] || [];
 
   const table = TABLE_BY_COLLECTION[collectionName];
-  const { data, error } = await supabase.from(table).select("*");
-  throwIfError(error);
-  return (data || []).map(fromDbRow);
+  const pageSize = 1000;
+  const rows = [];
+  for (let from = 0; from < 50000; from += pageSize) {
+    const { data, error } = await supabase
+      .from(table)
+      .select("*")
+      .order("id", { ascending: true })
+      .range(from, from + pageSize - 1);
+    throwIfError(error);
+    rows.push(...(data || []));
+    if (!data || data.length < pageSize) break;
+  }
+  return rows.map(fromDbRow);
 }
 
 async function saveDoc(collectionName, data) {
@@ -831,25 +841,18 @@ async function getUserProfile(user) {
   return { ...profile, uid: profile.id };
 }
 
-function marginFor(product, settings = state.settings) {
-  if (product.marginPercent !== "" && product.marginPercent !== null && product.marginPercent !== undefined) {
-    return Number(product.marginPercent);
-  }
-
-  const landedCost = Number(product.cost || 0) + Number(product.cogs || 0);
-  const band = (settings.marginBands || []).find((item) => item.max === null || landedCost <= Number(item.max));
-  return Number((band && band.margin) || settings.defaultMargin || 0);
+function marginFor(_product, settings = state.settings) {
+  return Number(settings.defaultMargin || 0);
 }
 
 function roundPrice(value, roundTo = state.settings.roundTo) {
-  const step = Number(roundTo || 100);
+  const step = Number(roundTo || 1);
   return Math.round(Number(value || 0) / step) * step;
 }
 
 function calculatePrice(product, settings = state.settings) {
-  const landedCost = Number(product.cost || 0) + Number(product.cogs || 0);
-  const fxFactor = Number(settings.currentFx || 1) / Number(settings.baseFx || settings.currentFx || 1);
-  return roundPrice(landedCost * (1 + marginFor(product, settings) / 100) * fxFactor, settings.roundTo);
+  const landed = Number(product.cost || 0) + Number(product.cogs || 0);
+  return roundPrice(landed * (1 + Number(settings.defaultMargin || 0) / 100), settings.roundTo || 1);
 }
 
 async function loadCoreData() {
@@ -1069,12 +1072,12 @@ async function showApp(profile) {
 }
 
 function renderSettings() {
-  qs("#base-fx").value = state.settings.baseFx;
-  qs("#current-fx").value = state.settings.currentFx;
-  qs("#round-to").value = state.settings.roundTo;
-  qs("#default-margin").value = state.settings.defaultMargin;
-  qs("#low-stock-threshold").value = lowStockThreshold();
-  qs("#margin-bands").value = JSON.stringify(state.settings.marginBands || [], null, 2);
+  const margin = qs("#default-margin");
+  const roundTo = qs("#round-to");
+  const threshold = qs("#low-stock-threshold");
+  if (margin) margin.value = state.settings.defaultMargin;
+  if (roundTo) roundTo.value = state.settings.roundTo || 1;
+  if (threshold) threshold.value = lowStockThreshold();
 }
 
 function productDraftFromForm(existing) {
@@ -1092,7 +1095,6 @@ function productDraftFromForm(existing) {
     brand: qs("#product-brand")?.value.trim() || "",
     sku: isEdit ? existing.sku : (qs("#product-sku").value.trim() || generateSku(qs("#product-type").value, qs("#product-name").value.trim())),
     barcode: isEdit ? existing.barcode : (qs("#product-barcode").value.trim() || generateBarcode()),
-    marginPercent: qs("#product-margin").value === "" ? "" : numberValue("#product-margin"),
     imageUrl: qs("#product-image-url").value || existing?.imageUrl || "",
     active: true,
     updatedAt: nowIso()
@@ -1116,8 +1118,16 @@ function productDraftFromForm(existing) {
     base.cogs = cogsPerUnit;
   }
 
-  base.price = calculatePrice(base);
-  return { product: base, qty, unitCost, batchCogs, cogsPerUnit };
+  const autoPrice = calculatePrice(base);
+  const typedPrice = qs("#product-price")?.value ?? "";
+  if (typedPrice !== "") {
+    base.price = Math.max(0, Math.round(Number(typedPrice)));
+    base.priceLocked = true;
+  } else {
+    base.price = autoPrice;
+    base.priceLocked = false;
+  }
+  return { product: base, qty, unitCost, batchCogs, cogsPerUnit, autoPrice };
 }
 
 function renderProducts() {
@@ -1514,7 +1524,7 @@ function fillProductForm(product) {
   qs("#product-unit-cost").value = 0;
   qs("#product-batch-cogs").value = 0;
   qs("#product-qty").value = isEdit ? 1 : 1;
-  qs("#product-margin").value = product?.marginPercent ?? "";
+  qs("#product-price").value = product?.priceLocked ? product.price : "";
   qs("#product-payment-type").value = "cash";
   qs("#product-new-supplier").value = "";
   qs("#product-image").value = "";
@@ -1549,7 +1559,7 @@ function updateComputedPrice(existing) {
   qs("#display-avg-cost").textContent = money(draft.product.cost);
   qs("#display-avg-cogs").textContent = money(draft.product.cogs);
   qs("#display-stock").innerHTML = stockOnHandHtml(draft.product.stockQty, draft.product.unit);
-  qs("#computed-product-price").textContent = money(draft.product.price);
+  qs("#computed-product-price").textContent = money(draft.autoPrice);
 }
 
 async function resolveSupplier() {
@@ -1590,10 +1600,15 @@ async function saveProduct(event) {
       return;
     }
 
-    const savedProduct = await saveDoc(
-      "products",
-      existing ? product : { ...product, createdAt: nowIso() }
-    );
+    const payload = existing ? product : { ...product, createdAt: nowIso() };
+    let savedProduct;
+    try {
+      savedProduct = await saveDoc("products", payload);
+    } catch (error) {
+      if (!String(error.message || "").includes("price_locked")) throw error;
+      const { priceLocked: _locked, ...withoutLock } = payload;
+      savedProduct = await saveDoc("products", withoutLock);
+    }
 
     if (qty > 0) {
       const total = qty * unitCost + batchCogs;
@@ -1781,6 +1796,9 @@ function renderCart() {
     ? `-${money(discount.amount)}${discount.type === "percent" ? ` (${discount.value}%)` : ""}`
     : money(0);
   qs("#cart-total").textContent = money(discount.total);
+  const itemCount = state.cart.reduce((sum, item) => sum + Number(item.qty || 0), 0);
+  if (qs("#cart-dock-count")) qs("#cart-dock-count").textContent = itemCount.toLocaleString();
+  if (qs("#cart-dock-total")) qs("#cart-dock-total").textContent = money(discount.total);
 }
 
 function renderReceipt(sale, items) {
@@ -1881,11 +1899,7 @@ async function completeSale() {
     }
     savedItems.push(saleItem);
 
-    await saveDoc("products", {
-      ...product,
-      stockQty: Number(product.stockQty || 0) - Number(item.qty || 0),
-      updatedAt: nowIso()
-    });
+    await updateProductStock(product.id, Number(product.stockQty || 0) - Number(item.qty || 0));
   }
 
   if (sale.paymentType === "credit") {
@@ -1901,6 +1915,8 @@ async function completeSale() {
   }
 
   renderReceipt(sale, savedItems);
+  qs("#pos-order")?.classList.add("is-open");
+  qs("#pos-order-dock")?.setAttribute("aria-expanded", "true");
   state.cart = [];
   qs("#customer-name").value = "Walk-in customer";
   resetCheckoutDiscount();
@@ -2881,11 +2897,6 @@ function bindEvents() {
     state.handlingLogin = true;
 
     try {
-      if (!state.isSupabaseReady) {
-        await enterApp(demoUser);
-        return;
-      }
-
       const { data, error } = await supabase.auth.signInWithPassword({
         email: qs("#login-email").value.trim(),
         password: qs("#login-password").value
@@ -2908,12 +2919,11 @@ function bindEvents() {
     "#product-unit-cost",
     "#product-batch-cogs",
     "#product-qty",
-    "#product-margin",
-    "#current-fx",
-    "#base-fx",
+    "#product-price",
     "#round-to"
   ].forEach((selector) => {
-    qs(selector).addEventListener("input", () => updateComputedPrice());
+    qs(selector)?.addEventListener("input", () => updateComputedPrice());
+    qs(selector)?.addEventListener("change", () => updateComputedPrice());
   });
 
   ["#product-type", "#product-name"].forEach((selector) => {
@@ -2990,12 +3000,9 @@ function bindEvents() {
     try {
       const settings = {
         id: "main",
-        baseFx: numberValue("#base-fx"),
-        currentFx: numberValue("#current-fx"),
         roundTo: numberValue("#round-to"),
         defaultMargin: numberValue("#default-margin"),
         lowStockThreshold: numberValue("#low-stock-threshold"),
-        marginBands: JSON.parse(qs("#margin-bands").value),
         updatedAt: nowIso()
       };
       await saveDoc("settings", settings);
@@ -3008,11 +3015,26 @@ function bindEvents() {
   });
 
   qs("#reprice-btn").addEventListener("click", async () => {
-    for (const product of state.products) {
-      await saveDoc("products", { ...product, price: calculatePrice(product), updatedAt: nowIso() });
+    const targets = state.products.filter((product) => !product.priceLocked);
+    if (!targets.length) {
+      showToast("No automatic prices to update.");
+      return;
+    }
+    if (!confirm(`Update ${targets.length} automatic prices with the shop margin? Custom prices stay as they are.`)) return;
+    for (let index = 0; index < targets.length; index += 8) {
+      await Promise.all(targets.slice(index, index + 8).map(async (product) => {
+        const next = { ...product, price: calculatePrice(product), priceLocked: false, updatedAt: nowIso() };
+        try {
+          await saveDoc("products", next);
+        } catch (error) {
+          if (!String(error.message || "").includes("price_locked")) throw error;
+          const { priceLocked: _locked, ...withoutLock } = next;
+          await saveDoc("products", withoutLock);
+        }
+      }));
     }
     await loadData();
-    showToast("All product prices recalculated.");
+    showToast(`Updated ${targets.length} prices. Custom prices were left as-is.`);
   });
 
   qs("#add-barcode-btn").addEventListener("click", () => {
@@ -3041,6 +3063,12 @@ function bindEvents() {
       qsa("[data-pos-filter]").forEach((pill) => pill.classList.toggle("active", pill === button));
       renderPosCatalog();
     });
+  });
+  qs("#pos-order-dock")?.addEventListener("click", () => {
+    const order = qs("#pos-order");
+    if (!order) return;
+    const open = order.classList.toggle("is-open");
+    qs("#pos-order-dock").setAttribute("aria-expanded", open ? "true" : "false");
   });
   qs("#clear-cart")?.addEventListener("click", () => {
     if (!state.cart.length) return;
@@ -3252,17 +3280,12 @@ function init() {
   syncDiscountInputState();
 
   const authMessage = qs("#auth-message");
-  if (state.isSupabaseReady) {
-    authMessage.textContent = "Connected to Supabase. Sign in with your shop email and password.";
-    // Don't leave users on the loading screen if the session check never answers.
-    setTimeout(() => {
-      if (!state.user && !qs("#boot-screen").classList.contains("d-none")) showAuthScreen();
-    }, 10000);
-  } else {
-    showAuthScreen();
-    authMessage.innerHTML = "Configure Supabase in <code>assets/js/supabase-config.js</code>. Demo mode is used until real config is added.";
-    qs("#login-email").value = demoUser.email;
-    qs("#login-password").value = "demo";
+  authMessage.textContent = "Sign in with your shop email and password.";
+  setTimeout(() => {
+    if (!state.user && !qs("#boot-screen").classList.contains("d-none")) showAuthScreen();
+  }, 10000);
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
   }
 }
 

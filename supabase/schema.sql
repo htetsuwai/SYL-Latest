@@ -179,7 +179,48 @@ alter table sales add column if not exists discount_type text default 'none';
 alter table sales add column if not exists discount_value numeric default 0;
 alter table sales add column if not exists discount_amount numeric default 0;
 
+alter table products add column if not exists price_locked boolean default false;
+
 alter table expenses add column if not exists payment_type text default 'cash';
+
+create index if not exists products_name_idx on products (name);
+create index if not exists sales_date_idx on sales (date desc);
+create index if not exists sale_items_sale_id_idx on sale_items (sale_id);
+create index if not exists purchases_date_idx on purchases (date desc);
+create index if not exists credits_status_idx on credits (status);
+create index if not exists expenses_date_idx on expenses (date desc);
+
+-- Sales staff may change stock only. Prices and product details stay with admin.
+create or replace function public.protect_product_prices()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if public.user_role() = 'sales' then
+    new.price := old.price;
+    new.cost := old.cost;
+    new.cogs := old.cogs;
+    new.margin_percent := old.margin_percent;
+    new.name := old.name;
+    new.sku := old.sku;
+    new.barcode := old.barcode;
+    new.type := old.type;
+    new.brand := old.brand;
+    new.unit := old.unit;
+    new.image_url := old.image_url;
+    new.active := old.active;
+    new.price_locked := old.price_locked;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists protect_product_prices on products;
+create trigger protect_product_prices
+before update on products
+for each row execute function public.protect_product_prices();
 
 -- Row Level Security
 alter table profiles enable row level security;

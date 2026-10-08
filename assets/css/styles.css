@@ -897,8 +897,17 @@ h1, h2, h3, .navbar-brand {
 @media print {
   .app-sidebar,
   .app-topbar,
-  .sidebar-backdrop {
+  .sidebar-backdrop,
+  .pos-order-dock {
     display: none !important;
+  }
+
+  .pos-order,
+  .pos-order-body {
+    position: static !important;
+    display: block !important;
+    max-height: none !important;
+    overflow: visible !important;
   }
 
   .app-main {
@@ -1172,6 +1181,10 @@ h1, h2, h3, .navbar-brand {
   top: 0.75rem;
 }
 
+.pos-order-dock {
+  display: none;
+}
+
 .order-lines {
   display: grid;
   gap: 0.65rem;
@@ -1270,12 +1283,51 @@ h1, h2, h3, .navbar-brand {
     grid-template-columns: 1fr;
   }
 
+  #pos {
+    padding-bottom: 5.25rem;
+  }
+
   .pos-grid {
     max-height: none;
+    grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
   }
 
   .pos-order {
-    position: static;
+    position: fixed;
+    left: 0.75rem;
+    right: 0.75rem;
+    bottom: 0.75rem;
+    z-index: 30;
+    max-height: min(78vh, 36rem);
+    overflow: auto;
+    margin: 0;
+    box-shadow: 0 12px 40px rgba(90, 42, 16, 0.18);
+  }
+
+  .pos-order-dock {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    width: 100%;
+    border: 0;
+    background: var(--brand);
+    color: #fff;
+    border-radius: 999px;
+    padding: 0.85rem 1.1rem;
+    font-weight: 700;
+  }
+
+  .pos-order:not(.is-open) .pos-order-body {
+    display: none;
+  }
+
+  .pos-order.is-open .pos-order-dock {
+    margin-bottom: 0.85rem;
+  }
+
+  .order-lines {
+    max-height: 28vh;
   }
 }
 
