@@ -1861,8 +1861,16 @@ async function completeSale() {
     }
   }
 
-  const discount = getCartDiscount();
-  const sale = await saveDoc("sales", {
+  const checkoutBtn = qs("#checkout-btn");
+  const checkoutLabel = checkoutBtn?.textContent;
+  if (checkoutBtn) {
+    checkoutBtn.disabled = true;
+    checkoutBtn.textContent = "Saving sale...";
+  }
+
+  try {
+    const discount = getCartDiscount();
+    const sale = await saveDoc("sales", {
     receiptNo: `S-${Date.now()}`,
     date: nowIso(),
     userId: state.user.id || state.user.uid,
@@ -1923,6 +1931,14 @@ async function completeSale() {
   renderCart();
   await loadData();
   showToast("Sale completed.");
+  } catch (error) {
+    showToast(error.message || "Could not complete the sale.");
+  } finally {
+    if (checkoutBtn) {
+      checkoutBtn.disabled = false;
+      checkoutBtn.textContent = checkoutLabel;
+    }
+  }
 }
 
 function renderPurchases() {

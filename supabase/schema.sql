@@ -295,6 +295,12 @@ drop policy if exists "sales_select_admin" on sales;
 create policy "sales_select_admin" on sales
   for select to authenticated using (user_role() = 'admin');
 
+-- Sales staff must be able to read the row they just inserted, or checkout is rejected.
+drop policy if exists "sales_select_own" on sales;
+create policy "sales_select_own" on sales
+  for select to authenticated
+  using (user_role() = 'sales' and user_id = auth.uid());
+
 -- Sale items
 drop policy if exists "sale_items_insert_staff" on sale_items;
 create policy "sale_items_insert_staff" on sale_items
@@ -303,6 +309,18 @@ create policy "sale_items_insert_staff" on sale_items
 drop policy if exists "sale_items_select_admin" on sale_items;
 create policy "sale_items_select_admin" on sale_items
   for select to authenticated using (user_role() = 'admin');
+
+drop policy if exists "sale_items_select_own" on sale_items;
+create policy "sale_items_select_own" on sale_items
+  for select to authenticated
+  using (
+    user_role() = 'sales'
+    and exists (
+      select 1 from sales
+      where sales.id = sale_items.sale_id
+        and sales.user_id = auth.uid()
+    )
+  );
 
 -- Suppliers, purchases, expenses, credit payments: admin only
 drop policy if exists "suppliers_admin" on suppliers;
@@ -352,3 +370,8 @@ drop policy if exists "credits_sales_insert" on credits;
 create policy "credits_sales_insert" on credits
   for insert to authenticated
   with check (user_role() = 'sales' and type = 'receivable');
+
+drop policy if exists "credits_select_sales" on credits;
+create policy "credits_select_sales" on credits
+  for select to authenticated
+  using (user_role() = 'sales' and type = 'receivable');
