@@ -3241,7 +3241,16 @@ async function restoreSession(user) {
 
 function initSupabase() {
   if (!state.isSupabaseReady) return;
-  supabase = createClient(supabaseConfig.url, supabaseConfig.anonKey);
+  supabase = createClient(supabaseConfig.url, supabaseConfig.anonKey, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: false,
+      // The browser lock was failing on this site and dropping the session,
+      // so the profile request looked unsigned-in even when the row exists.
+      lock: async (_name, _acquireTimeout, fn) => await fn()
+    }
+  });
 
   // Keep the callback sync and defer async work. Awaiting Supabase queries
   // inside onAuthStateChange can deadlock the auth client and freeze login.
