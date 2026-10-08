@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://cdn.jsdelivr.net">
     <link rel="preconnect" href="https://esm.sh">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="assets/css/styles.css?v=20251005boot">
+    <link rel="stylesheet" href="assets/css/styles.css?v=20251008ui">
   </head>
   <body>
     <div id="boot-screen" class="boot-screen" role="status" aria-live="polite">
@@ -63,7 +63,7 @@
               <span class="sidebar-chevron" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="m6 9 6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
             </button>
             <div id="products-submenu" class="sidebar-submenu" hidden>
-              <a class="sidebar-sublink" href="#products" data-route="products">All Products</a>
+              <a class="sidebar-sublink" href="#products" data-route="products">New Product</a>
               <a class="sidebar-sublink" href="#inventory" data-route="inventory">Inventory</a>
             </div>
           </div>
@@ -86,7 +86,7 @@
           </a>
           <a class="sidebar-link admin-only" href="#reports" data-route="reports">
             <span class="sidebar-ico" aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M4 19V5m0 14h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M8 16V10m4 6V7m4 9v-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
-            <span>Sales &amp; Reports</span>
+            <span>Dashboard</span>
           </a>
         </nav>
       </aside>
@@ -105,78 +105,73 @@
 
         <main class="app-content">
         <section id="pos" class="view">
-          <div class="page-title">
-            <div>
-              <p class="eyebrow">Sales</p>
-              <h2>POS Terminal</h2>
-            </div>
-            <button id="print-last-receipt" class="btn btn-outline-secondary" type="button">Print Last Receipt</button>
-          </div>
-          <div class="row g-4">
-            <div class="col-lg-7">
-              <div class="panel">
-                <label class="form-label" for="barcode-input">Scan or enter barcode</label>
-                <div class="input-group input-group-lg mb-3">
-                  <input id="barcode-input" class="form-control" placeholder="Scan barcode..." autocomplete="off">
-                  <button id="add-barcode-btn" class="btn btn-primary" type="button">Add</button>
+          <div class="pos-stage">
+            <div class="panel pos-catalog">
+              <div class="pos-catalog-head">
+                <div>
+                  <p class="eyebrow">Sales</p>
+                  <h2>SYL POS</h2>
                 </div>
-                <div class="table-responsive">
-                  <table class="table align-middle">
-                    <thead>
-                      <tr>
-                        <th>Product</th>
-                        <th class="text-end">Price</th>
-                        <th class="text-center">Qty</th>
-                        <th class="text-end">Total</th>
-                        <th></th>
-                      </tr>
-                    </thead>
-                    <tbody id="cart-body"></tbody>
-                  </table>
-                </div>
+                <button id="print-last-receipt" class="btn btn-outline-secondary btn-sm" type="button">Print last receipt</button>
               </div>
+              <label class="form-label" for="barcode-input">Scan or search</label>
+              <div class="input-group mb-2">
+                <input id="barcode-input" class="form-control" placeholder="Scan barcode..." autocomplete="off">
+                <button id="add-barcode-btn" class="btn btn-primary" type="button">Add</button>
+              </div>
+              <input id="pos-search" class="form-control" type="search" placeholder="Search name, SKU, or brand">
+              <div class="pos-pills" role="tablist">
+                <button class="pos-pill active" type="button" data-pos-filter="all">All items</button>
+                <button class="pos-pill" type="button" data-pos-filter="HA">HA</button>
+                <button class="pos-pill" type="button" data-pos-filter="IA">IA</button>
+              </div>
+              <div id="pos-grid" class="pos-grid"></div>
             </div>
-            <div class="col-lg-5">
-              <div class="panel sticky-lg-top pos-summary">
-                <h3 class="h5">Checkout</h3>
+            <aside class="panel pos-order">
+              <div class="pos-order-head">
+                <h2>Current order</h2>
+                <button id="clear-cart" class="btn btn-sm btn-outline-danger" type="button">Clear all</button>
+              </div>
+              <div id="cart-list" class="order-lines"></div>
+              <div class="order-totals">
                 <div class="summary-row"><span>Items</span><strong id="cart-items">0</strong></div>
                 <div class="summary-row"><span>Subtotal</span><strong id="cart-subtotal">0 MMK</strong></div>
                 <div class="summary-row"><span>Discount</span><strong id="cart-discount">0 MMK</strong></div>
                 <div class="summary-row total"><span>Total</span><strong id="cart-total">0 MMK</strong></div>
-                <label class="form-label" for="discount-type">Discount</label>
-                <div class="row g-2 mb-3">
-                  <div class="col-6">
-                    <select id="discount-type" class="form-select">
-                      <option value="none">No discount</option>
-                      <option value="percent">Percent (%)</option>
-                      <option value="manual">Manual (MMK)</option>
-                    </select>
-                  </div>
-                  <div class="col-6">
-                    <input id="discount-value" class="form-control" type="number" min="0" step="0.01" value="0" disabled>
-                  </div>
-                </div>
-                <label class="form-label" for="customer-name">Customer name</label>
-                <input id="customer-name" class="form-control mb-3" placeholder="Optional">
-                <label class="form-label" for="payment-type">Payment type</label>
-                <select id="payment-type" class="form-select mb-3">
-                  <option value="cash">Cash / Paid now</option>
-                  <option value="kpay">KPay</option>
-                  <option value="kbz">KBZ Mobile Banking</option>
-                  <option value="credit">Credit</option>
-                </select>
-                <button id="checkout-btn" class="btn btn-success btn-lg w-100" type="button">Complete Sale</button>
-                <div id="receipt-preview" class="receipt mt-4"></div>
               </div>
-            </div>
+              <label class="form-label mt-3" for="discount-type">Discount</label>
+              <div class="row g-2 mb-3">
+                <div class="col-6">
+                  <select id="discount-type" class="form-select">
+                    <option value="none">No discount</option>
+                    <option value="percent">Percent (%)</option>
+                    <option value="manual">Manual (MMK)</option>
+                  </select>
+                </div>
+                <div class="col-6">
+                  <input id="discount-value" class="form-control" type="number" min="0" step="0.01" value="0" disabled>
+                </div>
+              </div>
+              <label class="form-label" for="customer-name">Customer name</label>
+              <input id="customer-name" class="form-control mb-3" value="Walk-in customer">
+              <label class="form-label" for="payment-type">Payment type</label>
+              <select id="payment-type" class="form-select mb-3">
+                <option value="cash">Cash</option>
+                <option value="kpay">KPay</option>
+                <option value="kbz">Banking</option>
+                <option value="credit">Credit</option>
+              </select>
+              <button id="checkout-btn" class="btn btn-primary btn-lg w-100" type="button">Complete sale</button>
+              <div id="receipt-preview" class="receipt mt-4"></div>
+            </aside>
           </div>
         </section>
 
         <section id="products" class="view admin-only">
           <div class="page-title products-page-header">
             <div>
-              <p class="page-breadcrumb">Products &gt; All Products</p>
-              <h2>All Products</h2>
+              <p class="page-breadcrumb">Products &gt; New Product</p>
+              <h2>New Product</h2>
               <p class="page-subtitle">Manage your electronic POS products, update inventory, prices and availability.</p>
             </div>
             <div class="d-flex flex-wrap gap-2">
@@ -448,7 +443,7 @@
         <section id="credit" class="view admin-only">
           <div class="page-title">
             <div>
-              <p class="eyebrow">A/R & A/P</p>
+              <p class="eyebrow">Receivable and payable</p>
               <h2>Credit</h2>
             </div>
           </div>
@@ -463,21 +458,49 @@
             </div>
             <div class="col-md-3">
               <label class="form-label" for="credit-payment-type">Payment type</label>
-              <select id="credit-payment-type" class="form-select">
-                <option value="cash">Cash / Paid now</option>
+                <select id="credit-payment-type" class="form-select">
+                <option value="cash">Cash</option>
                 <option value="kpay">KPay</option>
-                <option value="kbz">KBZ Mobile Banking</option>
+                <option value="kbz">Banking</option>
               </select>
             </div>
             <div class="col-md-3">
               <button class="btn btn-primary w-100" type="submit">Record Payment</button>
             </div>
           </form>
-          <div class="panel table-responsive mt-4">
-            <table class="table align-middle">
-              <thead><tr><th>Type</th><th>Party</th><th class="text-end">Amount</th><th class="text-end">Paid</th><th>Status</th></tr></thead>
-              <tbody id="credits-body"></tbody>
-            </table>
+          <div class="credit-split mt-4">
+            <div class="panel credit-panel receivable">
+              <div class="credit-panel-head">
+                <div>
+                  <span class="credit-kicker">Receivable</span>
+                  <h3>Customers owe you</h3>
+                  <p>Credit sales not yet collected</p>
+                </div>
+                <strong id="receivable-total">0 MMK</strong>
+              </div>
+              <div class="table-responsive">
+                <table class="table align-middle">
+                  <thead><tr><th>Party</th><th class="text-end">Amount</th><th class="text-end">Paid</th><th class="text-end">Left</th><th>Status</th></tr></thead>
+                  <tbody id="receivable-body"></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="panel credit-panel payable">
+              <div class="credit-panel-head">
+                <div>
+                  <span class="credit-kicker">Payable</span>
+                  <h3>You owe suppliers</h3>
+                  <p>Credit purchases and credit expenses</p>
+                </div>
+                <strong id="payable-total">0 MMK</strong>
+              </div>
+              <div class="table-responsive">
+                <table class="table align-middle">
+                  <thead><tr><th>Party</th><th class="text-end">Amount</th><th class="text-end">Paid</th><th class="text-end">Left</th><th>Status</th></tr></thead>
+                  <tbody id="payable-body"></tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -489,11 +512,11 @@
             </div>
           </div>
           <form id="expense-form" class="panel row g-3 align-items-end">
-            <div class="col-md-4">
+            <div class="col-md-3">
               <label class="form-label" for="expense-category">Category</label>
               <input id="expense-category" class="form-control" placeholder="Electric bill, taxi..." required>
             </div>
-            <div class="col-md-3">
+            <div class="col-md-2">
               <label class="form-label" for="expense-amount">Amount</label>
               <input id="expense-amount" class="form-control" type="number" min="1" step="1" required>
             </div>
@@ -502,12 +525,21 @@
               <input id="expense-note" class="form-control">
             </div>
             <div class="col-md-2">
+              <label class="form-label" for="expense-payment-type">Payment type</label>
+              <select id="expense-payment-type" class="form-select">
+                <option value="cash">Cash</option>
+                <option value="kpay">KPay</option>
+                <option value="kbz">Banking</option>
+                <option value="credit">Credit</option>
+              </select>
+            </div>
+            <div class="col-md-2">
               <button class="btn btn-primary w-100" type="submit">Save</button>
             </div>
           </form>
           <div class="panel table-responsive mt-4">
             <table class="table align-middle">
-              <thead><tr><th>Date</th><th>Category</th><th>Note</th><th class="text-end">Amount</th></tr></thead>
+              <thead><tr><th>Date</th><th>Category</th><th>Note</th><th>Payment</th><th class="text-end">Amount</th></tr></thead>
               <tbody id="expenses-body"></tbody>
             </table>
           </div>
@@ -516,8 +548,8 @@
         <section id="reports" class="view admin-only">
           <div class="page-title">
             <div>
-              <p class="eyebrow">Sales &amp; Reports</p>
-              <h2>Sales, Purchase, Stock, Credit & Expenses</h2>
+              <p class="eyebrow">Dashboard</p>
+              <h2>Shop performance</h2>
             </div>
           </div>
           <div class="panel">
@@ -543,7 +575,35 @@
               </div>
             </div>
             <div id="reports-filter-summary" class="small text-muted mb-3"></div>
-            <div id="reports-output" class="row g-3 mb-4"></div>
+            <p class="dash-section-label">Current balances</p>
+            <div id="dash-balances" class="dash-balance-grid mb-4"></div>
+            <p class="dash-section-label">Period performance</p>
+            <div id="dash-kpis" class="dash-kpi-grid mb-4"></div>
+            <div class="row g-3 mb-3">
+              <div class="col-lg-8">
+                <div class="panel dash-chart">
+                  <h3 class="h6 mb-3">Money in and out</h3>
+                  <div class="dash-canvas"><canvas id="chart-flow"></canvas></div>
+                </div>
+              </div>
+              <div class="col-lg-4">
+                <div class="panel dash-chart">
+                  <h3 class="h6 mb-3">Sales by payment</h3>
+                  <div class="dash-canvas dash-canvas-square"><canvas id="chart-mix"></canvas></div>
+                </div>
+              </div>
+            </div>
+            <div class="row g-3 mb-4">
+              <div class="col-lg-7">
+                <div class="panel dash-chart">
+                  <h3 class="h6 mb-3">Sales trend</h3>
+                  <div class="dash-canvas"><canvas id="chart-trend"></canvas></div>
+                </div>
+              </div>
+              <div class="col-lg-5">
+                <div class="panel dash-chart" id="dash-stock"></div>
+              </div>
+            </div>
             <div id="reports-detail"></div>
           </div>
         </section>
@@ -646,9 +706,9 @@
               <div class="col-6">
                 <label class="form-label" for="product-payment-type">Payment type</label>
                 <select id="product-payment-type" class="form-select">
-                  <option value="cash">Cash / Paid now</option>
+                  <option value="cash">Cash</option>
                   <option value="kpay">KPay</option>
-                  <option value="kbz">KBZ Mobile Banking</option>
+                  <option value="kbz">Banking</option>
                   <option value="credit">Credit</option>
                 </select>
               </div>
@@ -787,7 +847,8 @@
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
-    <script type="module" src="assets/js/app.js?v=20251005delsup"></script>
+    <script type="module" src="assets/js/app.js?v=20251008ui"></script>
   </body>
 </html>

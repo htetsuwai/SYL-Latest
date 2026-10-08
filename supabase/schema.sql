@@ -138,7 +138,8 @@ create table if not exists expenses (
   date timestamptz default now(),
   category text not null,
   amount numeric not null,
-  note text
+  note text,
+  payment_type text default 'cash'
 );
 
 create table if not exists stock_damages (
@@ -177,6 +178,8 @@ alter table sales add column if not exists subtotal numeric default 0;
 alter table sales add column if not exists discount_type text default 'none';
 alter table sales add column if not exists discount_value numeric default 0;
 alter table sales add column if not exists discount_amount numeric default 0;
+
+alter table expenses add column if not exists payment_type text default 'cash';
 
 -- Row Level Security
 alter table profiles enable row level security;

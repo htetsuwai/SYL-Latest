@@ -628,6 +628,7 @@ const state = {
   stockDamages: [],
   stockReturns: [],
   cart: [],
+  posFilter: "all",
   lastReceipt: null,
   productsPage: 1,
   productsPageSize: 8,
@@ -862,6 +863,7 @@ async function loadCoreData() {
 
   renderSettings();
   renderProducts();
+  renderPosCatalog();
   renderInventory();
   renderProductSupplierSelect();
   renderCart();
@@ -931,6 +933,7 @@ async function loadData() {
 function renderAll() {
   renderSettings();
   renderProducts();
+  renderPosCatalog();
   renderInventory();
   renderProductSupplierSelect();
   renderSuppliersTable();
@@ -986,6 +989,7 @@ function showRoute() {
 
   setSidebarOpen(false);
   if (target.id === "pos") qs("#barcode-input")?.focus();
+  if (target.id === "reports") requestAnimationFrame(() => renderReports());
 }
 
 function leaveApp(message = "Signed out. Sign in again to continue.") {
@@ -1654,8 +1658,11 @@ function addProductToCart(product, quantity = 1) {
   }
 
   renderCart();
-  qs("#barcode-input").value = "";
-  qs("#barcode-input").focus();
+  const keepScanFocus = document.activeElement === qs("#barcode-input") || document.activeElement === qs("#add-barcode-btn");
+  if (keepScanFocus) {
+    qs("#barcode-input").value = "";
+    qs("#barcode-input").focus();
+  }
 }
 
 function cartSubtotal() {
@@ -1703,21 +1710,69 @@ function resetCheckoutDiscount() {
   syncDiscountInputState();
 }
 
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (char) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  }[char]));
+}
+
+function renderPosCatalog() {
+  const grid = qs("#pos-grid");
+  if (!grid) return;
+  const query = (qs("#pos-search")?.value || "").trim().toLowerCase();
+  const filter = state.posFilter || "all";
+  const products = state.products
+    .filter((product) => product.active !== false)
+    .filter((product) => filter === "all" || product.type === filter)
+    .filter((product) => {
+      if (!query) return true;
+      return [product.name, product.sku, product.barcode, product.brand]
+        .some((value) => String(value || "").toLowerCase().includes(query));
+    });
+
+  grid.innerHTML = products.length
+    ? products.map((product) => `
+      <button class="pos-card ${Number(product.stockQty || 0) <= 0 ? "is-out" : ""}" type="button" data-add-product="${product.id}">
+        <span>
+          <strong>${escapeHtml(product.name)}</strong>
+          <small>${escapeHtml(product.unit || "pcs")} · ${Number(product.stockQty || 0).toLocaleString()} in stock</small>
+          <em>${money(product.price)}</em>
+        </span>
+        ${productImageHtml(product.imageUrl, product.name, "pos-card-img")}
+      </button>
+    `).join("")
+    : `<p class="empty-order">No products match.</p>`;
+}
+
 function renderCart() {
-  qs("#cart-body").innerHTML = state.cart.map((item) => `
-    <tr>
-      <td>
-        <strong>${item.name}</strong>
-        <div class="small text-muted">${item.barcode} / ${item.unit}</div>
-      </td>
-      <td class="text-end">${money(item.price)}</td>
-      <td class="text-center">
-        <input class="form-control form-control-sm text-center cart-qty" data-cart-product="${item.productId}" type="number" min="1" step="1" value="${Math.max(1, Math.round(Number(item.qty || 1)))}">
-      </td>
-      <td class="text-end">${money(item.price * item.qty)}</td>
-      <td class="text-end"><button class="btn btn-sm btn-outline-danger" data-remove-cart="${item.productId}">Remove</button></td>
-    </tr>
-  `).join("");
+  const list = qs("#cart-list");
+  if (!list) return;
+  list.innerHTML = state.cart.length
+    ? state.cart.map((item) => {
+      const product = state.products.find((row) => row.id === item.productId);
+      const qty = Math.max(1, Math.round(Number(item.qty || 1)));
+      return `
+        <div class="order-line">
+          ${productImageHtml(product?.imageUrl, item.name, "order-thumb")}
+          <div>
+            <strong>${escapeHtml(item.name)}</strong>
+            <div class="qty-step">
+              <button type="button" data-qty-delta="-1" data-cart-product="${item.productId}" aria-label="Decrease">−</button>
+              <span>${qty}</span>
+              <button type="button" data-qty-delta="1" data-cart-product="${item.productId}" aria-label="Increase">+</button>
+            </div>
+          </div>
+          <div class="order-line-price">
+            <button class="order-remove" type="button" data-remove-cart="${item.productId}">Remove</button>
+            <strong>${money(item.price * qty)}</strong>
+          </div>
+        </div>`;
+    }).join("")
+    : `<p class="empty-order">Tap a product or scan a barcode.</p>`;
 
   const discount = getCartDiscount();
   qs("#cart-items").textContent = state.cart.reduce((sum, item) => sum + Number(item.qty || 0), 0).toLocaleString();
@@ -1755,10 +1810,18 @@ function paymentTypeLabel(type) {
   const labels = {
     cash: "Cash",
     kpay: "KPay",
-    kbz: "KBZ Mobile Banking",
-    credit: "Credit Sale"
+    kbz: "Banking",
+    credit: "Credit"
   };
-  return labels[type] || type || "-";
+  return labels[normalizePaymentType(type)] || type || "-";
+}
+
+function normalizePaymentType(type) {
+  const value = String(type || "cash").toLowerCase();
+  if (value === "kpay") return "kpay";
+  if (value === "kbz" || value === "banking") return "kbz";
+  if (value === "credit") return "credit";
+  return "cash";
 }
 
 function findProductByBarcode(barcode) {
@@ -1785,7 +1848,7 @@ async function completeSale() {
     receiptNo: `S-${Date.now()}`,
     date: nowIso(),
     userId: state.user.id || state.user.uid,
-    customerName: qs("#customer-name").value.trim(),
+    customerName: qs("#customer-name").value.trim() || "Walk-in customer",
     paymentType: qs("#payment-type").value,
     subtotal: discount.subtotal,
     discountType: discount.type,
@@ -1839,7 +1902,7 @@ async function completeSale() {
 
   renderReceipt(sale, savedItems);
   state.cart = [];
-  qs("#customer-name").value = "";
+  qs("#customer-name").value = "Walk-in customer";
   resetCheckoutDiscount();
   renderCart();
   await loadData();
@@ -1861,21 +1924,42 @@ function renderPurchases() {
   `).join("") || `<tr><td colspan="6" class="text-muted">No purchases yet.</td></tr>`;
 }
 
-function renderCredits() {
-  qs("#credits-body").innerHTML = state.credits.map((credit) => `
+function creditLeft(credit) {
+  return Math.max(0, Number(credit.amount || 0) - Number(credit.paidAmount || 0));
+}
+
+function creditRowsHtml(type) {
+  const rows = state.credits.filter((credit) => credit.type === type);
+  if (!rows.length) {
+    return `<tr><td colspan="5" class="text-muted">No ${type === "receivable" ? "receivables" : "payables"} yet.</td></tr>`;
+  }
+  return rows.map((credit) => `
     <tr>
-      <td><span class="badge ${credit.type === "receivable" ? "text-bg-success" : "text-bg-warning"}">${credit.type}</span></td>
-      <td>${credit.partyName}</td>
+      <td>${escapeHtml(credit.partyName || "-")}</td>
       <td class="text-end">${money(credit.amount)}</td>
       <td class="text-end">${money(credit.paidAmount)}</td>
-      <td>${credit.status}</td>
+      <td class="text-end">${money(creditLeft(credit))}</td>
+      <td>${escapeHtml(credit.status || "")}</td>
     </tr>
   `).join("");
+}
+
+function renderCredits() {
+  const receivableEl = qs("#receivable-body");
+  const payableEl = qs("#payable-body");
+  if (receivableEl) receivableEl.innerHTML = creditRowsHtml("receivable");
+  if (payableEl) payableEl.innerHTML = creditRowsHtml("payable");
+
+  const position = creditPosition();
+  if (qs("#receivable-total")) qs("#receivable-total").textContent = money(position.receivable);
+  if (qs("#payable-total")) qs("#payable-total").textContent = money(position.payable);
 
   const openCredits = state.credits.filter((credit) => credit.status !== "paid");
-  qs("#credit-select").innerHTML = openCredits.map((credit) => `
-    <option value="${credit.id}">${credit.type}: ${credit.partyName} (${money(Number(credit.amount) - Number(credit.paidAmount || 0))} left)</option>
-  `).join("") || "<option value=''>No open credits</option>";
+  const option = (credit) => `<option value="${credit.id}">${escapeHtml(credit.partyName || "-")} (${money(creditLeft(credit))} left)</option>`;
+  const receivable = openCredits.filter((credit) => credit.type === "receivable");
+  const payable = openCredits.filter((credit) => credit.type === "payable");
+  const group = (label, rows) => rows.length ? `<optgroup label="${label}">${rows.map(option).join("")}</optgroup>` : "";
+  qs("#credit-select").innerHTML = `${group("Receivable — customers owe you", receivable)}${group("Payable — you owe suppliers", payable)}` || `<option value="">No open credits</option>`;
 }
 
 async function recordCreditPayment(event) {
@@ -1913,6 +1997,7 @@ function renderExpenses() {
       <td>${new Date(expense.date).toLocaleDateString()}</td>
       <td>${expense.category}</td>
       <td>${expense.note || ""}</td>
+      <td>${paymentTypeLabel(expense.paymentType)}</td>
       <td class="text-end">${money(expense.amount)}</td>
     </tr>
   `).join("");
@@ -2252,6 +2337,13 @@ async function exportReportExcel() {
       ["Type", report.typeLabel],
       ["Generated", report.generatedAt],
       [],
+      ["Current balances (all time)", "Amount (MMK)"],
+      ["Cash balance", excelMoney(computeMoneyPosition().net.cash)],
+      ["KPay balance", excelMoney(computeMoneyPosition().net.kpay)],
+      ["Banking balance", excelMoney(computeMoneyPosition().net.kbz)],
+      ["Receivable (customers owe you)", excelMoney(creditPosition().receivable)],
+      ["Payable (you owe suppliers)", excelMoney(creditPosition().payable)],
+      [],
       ["Metric", "Amount (MMK)"],
       ...(showHa ? [
         ["Gross sales HA", excelMoney(summary.grossSalesHa)],
@@ -2380,11 +2472,12 @@ async function exportReportExcel() {
     ]);
 
     appendExcelSheet(workbook, XLSX, "Expenses", [
-      ["Date", "Category", "Note", "Amount (MMK)"],
+      ["Date", "Category", "Note", "Payment", "Amount (MMK)"],
       ...report.expenses.map((expense) => [
         new Date(expense.date).toLocaleDateString(),
         expense.category || "",
         expense.note || "",
+        paymentTypeLabel(expense.paymentType),
         excelMoney(expense.amount)
       ])
     ]);
@@ -2418,27 +2511,289 @@ function renderReports() {
   const data = report.summary;
   const showHa = report.filter.type !== "IA";
   const showIa = report.filter.type !== "HA";
+  const balances = computeMoneyPosition();
+  const credits = creditPosition();
+  const periodMove = computeMoneyPosition(report.filter);
 
   const summaryEl = qs("#reports-filter-summary");
-  if (summaryEl) summaryEl.textContent = `Showing: ${report.periodLabel} · ${report.typeLabel}`;
+  if (summaryEl) {
+    summaryEl.textContent = `Balances are all-time. Charts and period cards follow ${report.periodLabel}. ${report.typeLabel} applies to sales, purchases, and profit. Returns are refunded as Cash.`;
+  }
 
-  qs("#reports-output").innerHTML = [
-    showHa && metricCard("Sales report HA", data.salesHa),
-    showIa && metricCard("Sales report IA", data.salesIa),
-    showHa && metricCard("Purchase report HA", data.purchasesHa),
-    showIa && metricCard("Purchase report IA", data.purchasesIa),
-    showHa && metricCardProfit("Profit HA", data.profitHa),
-    showIa && metricCardProfit("Profit IA", data.profitIa),
-    metricCard("Stock report", data.stockValue),
-    metricCard("Credit to receive", data.receivableTotal),
-    metricCard("Credit to pay", data.payableTotal),
-    metricCard("Expenses report", data.expenseTotal),
-    metricCardProfit("Net profit", data.netProfit),
-    `<div class="col-sm-6 col-xl-3"><div class="metric"><span>Sales count</span><strong>${report.sales.length}</strong></div></div>`
-  ].filter(Boolean).join("");
+  const balanceEl = qs("#dash-balances");
+  if (balanceEl) {
+    balanceEl.innerHTML = [
+      balanceCard("cash", "Cash", balances.net.cash, `${signedText(balances.inflow.cash)} in · ${signedText(balances.outflow.cash)} out`),
+      balanceCard("kpay", "KPay", balances.net.kpay, `${signedText(balances.inflow.kpay)} in · ${signedText(balances.outflow.kpay)} out`),
+      balanceCard("banking", "Banking", balances.net.kbz, `${signedText(balances.inflow.kbz)} in · ${signedText(balances.outflow.kbz)} out`),
+      balanceCard("receivable", "Receivable", credits.receivable, "Customers owe you"),
+      balanceCard("payable", "Payable", credits.payable, "You owe suppliers")
+    ].join("");
+  }
+
+  const kpiEl = qs("#dash-kpis");
+  if (kpiEl) {
+    kpiEl.innerHTML = [
+      breakdownCard("Sales", data.salesHa + data.salesIa, [
+        showHa && ["HA", data.salesHa],
+        showIa && ["IA", data.salesIa]
+      ].filter(Boolean), `${report.sales.length} sales`),
+      breakdownCard("Purchases", data.purchasesHa + data.purchasesIa, [
+        showHa && ["HA", data.purchasesHa],
+        showIa && ["IA", data.purchasesIa]
+      ].filter(Boolean)),
+      breakdownCard("Profit", (showHa ? data.profitHa : 0) + (showIa ? data.profitIa : 0), [
+        showHa && ["HA", data.profitHa],
+        showIa && ["IA", data.profitIa]
+      ].filter(Boolean), "Revenue − COGS − returns − damage", true),
+      simpleKpi("Net profit", data.netProfit, true),
+      simpleKpi("Expenses", data.expenseTotal),
+      simpleKpi("Stock value", data.stockValue)
+    ].join("");
+  }
+
+  renderStockPanel();
+  drawDashboardCharts(periodMove, report);
 
   const detailEl = qs("#reports-detail");
   if (detailEl) detailEl.innerHTML = "";
+}
+
+function simpleKpi(label, value, signed = false) {
+  const number = Number(value || 0);
+  const text = signed ? signedText(number) : money(number);
+  return `<article class="metric"><span>${label}</span><strong class="${signed && number < 0 ? "text-danger" : ""}">${text}</strong></article>`;
+}
+
+function signedText(value) {
+  const number = Number(value || 0);
+  return `${number < 0 ? "-" : ""}${Math.abs(number).toLocaleString("en-US")} MMK`;
+}
+
+function balanceCard(kind, label, value, detail) {
+  const number = Number(value || 0);
+  return `
+    <article class="balance-card ${kind}">
+      <span>${label}</span>
+      <strong class="${number < 0 ? "text-danger" : ""}">${signedText(number)}</strong>
+      <small>${detail}</small>
+    </article>`;
+}
+
+function breakdownCard(label, total, parts, note = "", signed = false) {
+  const sum = parts.reduce((acc, [, value]) => acc + Math.abs(Number(value || 0)), 0);
+  const bars = parts.map(([name, value], index) => {
+    const width = sum > 0 ? Math.abs(Number(value || 0)) / sum * 100 : 0;
+    return `<div class="split-${index === 0 ? "ha" : "ia"}" style="width:${width}%" title="${name}"></div>`;
+  }).join("");
+  const legend = parts.map(([name, value]) => `<span>${name} ${signed ? signedText(value) : money(value)}</span>`).join("");
+  const totalText = signed ? signedText(total) : money(total);
+  return `
+    <article class="metric">
+      <span>${label}</span>
+      <strong class="${signed && Number(total) < 0 ? "text-danger" : ""}">${totalText}</strong>
+      <div class="split-legend">${legend}</div>
+      <div class="split-track">${bars}</div>
+      ${note ? `<small class="split-note">${note}</small>` : ""}
+    </article>`;
+}
+
+function creditPosition() {
+  const open = state.credits.filter((item) => item.status !== "paid");
+  const balanceOf = (item) => Math.max(0, Number(item.amount || 0) - Number(item.paidAmount || 0));
+  const receivable = open.filter((item) => item.type === "receivable").reduce((sum, item) => sum + balanceOf(item), 0);
+  const payable = open.filter((item) => item.type === "payable").reduce((sum, item) => sum + balanceOf(item), 0);
+  return { receivable, payable, net: receivable - payable };
+}
+
+function purchaseCashChannel(purchase) {
+  if (purchase.paymentStatus === "payable" || normalizePaymentType(purchase.paymentType) === "credit") return null;
+  return normalizePaymentType(purchase.paymentType);
+}
+
+function computeMoneyPosition(filter = { from: "", to: "" }) {
+  const sales = filterByPeriod(state.sales, filter);
+  const purchases = filterByPeriod(state.purchases, filter);
+  const expenses = filterByPeriod(state.expenses, filter);
+  const returns = filterByPeriod(state.stockReturns, filter);
+  const payments = filterByPeriod(state.creditPayments, filter);
+  const creditsById = Object.fromEntries(state.credits.map((credit) => [String(credit.id), credit]));
+  const inflow = { cash: 0, kpay: 0, kbz: 0 };
+  const outflow = { cash: 0, kpay: 0, kbz: 0 };
+  const salesByPay = { cash: 0, kpay: 0, kbz: 0, credit: 0 };
+
+  sales.forEach((sale) => {
+    const type = normalizePaymentType(sale.paymentType);
+    const amount = Number(sale.total || 0);
+    salesByPay[type] += amount;
+    if (type !== "credit") inflow[type] += amount;
+  });
+
+  purchases.forEach((purchase) => {
+    const channel = purchaseCashChannel(purchase);
+    if (channel) outflow[channel] += Number(purchase.total || 0);
+  });
+
+  expenses.forEach((expense) => {
+    const type = normalizePaymentType(expense.paymentType);
+    if (type !== "credit") outflow[type] += Number(expense.amount || 0);
+  });
+
+  returns.forEach((row) => {
+    outflow.cash += returnRefundAmount(row);
+  });
+
+  payments.forEach((payment) => {
+    const type = normalizePaymentType(payment.paymentType);
+    if (type === "credit") return;
+    const credit = creditsById[String(payment.creditId)];
+    const amount = Number(payment.amount || 0);
+    if (credit?.type === "payable") outflow[type] += amount;
+    else inflow[type] += amount;
+  });
+
+  return {
+    inflow,
+    outflow,
+    net: {
+      cash: inflow.cash - outflow.cash,
+      kpay: inflow.kpay - outflow.kpay,
+      kbz: inflow.kbz - outflow.kbz
+    },
+    salesByPay
+  };
+}
+
+function localDayKey(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
+function salesTrend(filter) {
+  const totals = new Map();
+  filterByPeriod(state.sales, filter).forEach((sale) => {
+    const key = localDayKey(sale.date);
+    if (!key) return;
+    totals.set(key, (totals.get(key) || 0) + Number(sale.total || 0));
+  });
+  filterByPeriod(state.stockReturns, filter).forEach((row) => {
+    const key = localDayKey(row.date);
+    if (!key) return;
+    totals.set(key, (totals.get(key) || 0) - returnRefundAmount(row));
+  });
+  const days = [...totals.keys()].sort();
+  if (days.length <= 45) {
+    return { labels: days, values: days.map((day) => totals.get(day)) };
+  }
+  const weeks = new Map();
+  days.forEach((day) => {
+    const date = new Date(`${day}T00:00:00`);
+    const start = new Date(date);
+    start.setDate(date.getDate() - date.getDay());
+    const key = localDayKey(start);
+    weeks.set(key, (weeks.get(key) || 0) + totals.get(day));
+  });
+  const labels = [...weeks.keys()].sort();
+  return { labels, values: labels.map((label) => weeks.get(label)) };
+}
+
+function renderStockPanel() {
+  const panel = qs("#dash-stock");
+  if (!panel) return;
+  const counts = { healthy: 0, low: 0, out: 0 };
+  state.products.filter((product) => product.active !== false).forEach((product) => {
+    const level = stockStatus(product.stockQty).level;
+    counts[level] = (counts[level] || 0) + 1;
+  });
+  panel.innerHTML = `
+    <h3 class="h6 mb-3">Stock health</h3>
+    <div class="stock-health">
+      <div><strong>${counts.healthy}</strong><span>In stock</span></div>
+      <div><strong class="text-warning">${counts.low}</strong><span>Low</span></div>
+      <div><strong class="text-danger">${counts.out}</strong><span>Out</span></div>
+    </div>
+    <p class="small text-muted mb-0 mt-3">${state.products.filter((product) => product.active !== false).length} active products. Stock value uses landed cost × quantity on hand.</p>
+  `;
+}
+
+function drawDashboardCharts(movement, report) {
+  if (!window.Chart) return;
+  const brand = "#0d7377";
+  const ink = "#374151";
+  const grid = "#e5e7eb";
+  const labels = ["Cash", "KPay", "Banking"];
+  const keys = ["cash", "kpay", "kbz"];
+
+  drawChart("chart-flow", {
+    type: "bar",
+    data: {
+      labels,
+      datasets: [
+        { label: "In", data: keys.map((key) => movement.inflow[key]), backgroundColor: "#0d7377", borderRadius: 6 },
+        { label: "Out", data: keys.map((key) => movement.outflow[key]), backgroundColor: "#c47a3a", borderRadius: 6 }
+      ]
+    },
+    options: chartOptions(ink, grid)
+  });
+
+  const mix = movement.salesByPay;
+  drawChart("chart-mix", {
+    type: "doughnut",
+    data: {
+      labels: ["Cash", "KPay", "Banking", "Credit"],
+      datasets: [{
+        data: [mix.cash, mix.kpay, mix.kbz, mix.credit],
+        backgroundColor: ["#0d7377", "#2563eb", "#c47a3a", "#7c3aed"],
+        borderWidth: 0
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { position: "bottom", labels: { color: ink, boxWidth: 12 } } }
+    }
+  });
+
+  const trend = salesTrend(report.filter);
+  drawChart("chart-trend", {
+    type: "line",
+    data: {
+      labels: trend.labels,
+      datasets: [{
+        label: "Net sales",
+        data: trend.values,
+        borderColor: brand,
+        backgroundColor: "rgba(13, 115, 119, 0.12)",
+        fill: true,
+        tension: 0.3,
+        pointRadius: trend.labels.length > 20 ? 0 : 3
+      }]
+    },
+    options: chartOptions(ink, grid)
+  });
+}
+
+function chartOptions(ink, grid) {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { labels: { color: ink, boxWidth: 12 } } },
+    scales: {
+      x: { ticks: { color: ink, maxRotation: 0, autoSkip: true }, grid: { display: false } },
+      y: { ticks: { color: ink }, grid: { color: grid }, beginAtZero: true }
+    }
+  };
+}
+
+function drawChart(id, config) {
+  const canvas = qs(`#${id}`);
+  if (!canvas) return;
+  const existing = window.Chart.getChart(canvas);
+  if (existing) existing.destroy();
+  new window.Chart(canvas, config);
 }
 
 function printReceipt() {
@@ -2673,20 +3028,38 @@ function bindEvents() {
     }
   });
 
-  qs("#cart-body").addEventListener("input", (event) => {
-    if (!event.target.classList.contains("cart-qty")) return;
-    const item = state.cart.find((row) => row.productId === event.target.dataset.cartProduct);
-    if (item) {
-      item.qty = Math.max(1, Math.round(Number(event.target.value || 1)));
-      event.target.value = item.qty;
-    }
+  qs("#pos-search")?.addEventListener("input", renderPosCatalog);
+  qs("#pos-grid")?.addEventListener("click", (event) => {
+    const card = event.target.closest("[data-add-product]");
+    if (!card) return;
+    const product = state.products.find((item) => String(item.id) === String(card.dataset.addProduct));
+    if (product) addProductToCart(product);
+  });
+  qsa("[data-pos-filter]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.posFilter = button.dataset.posFilter || "all";
+      qsa("[data-pos-filter]").forEach((pill) => pill.classList.toggle("active", pill === button));
+      renderPosCatalog();
+    });
+  });
+  qs("#clear-cart")?.addEventListener("click", () => {
+    if (!state.cart.length) return;
+    state.cart = [];
     renderCart();
   });
 
-  qs("#cart-body").addEventListener("click", (event) => {
-    const removeId = event.target.dataset.removeCart;
-    if (!removeId) return;
-    state.cart = state.cart.filter((item) => item.productId !== removeId);
+  qs("#cart-list").addEventListener("click", (event) => {
+    const removeId = event.target.closest("[data-remove-cart]")?.dataset.removeCart;
+    if (removeId) {
+      state.cart = state.cart.filter((item) => String(item.productId) !== String(removeId));
+      renderCart();
+      return;
+    }
+    const step = event.target.closest("[data-qty-delta]");
+    if (!step) return;
+    const item = state.cart.find((row) => String(row.productId) === String(step.dataset.cartProduct));
+    if (!item) return;
+    item.qty = Math.max(1, Math.round(Number(item.qty || 1) + Number(step.dataset.qtyDelta || 0)));
     renderCart();
   });
 
@@ -2741,15 +3114,45 @@ function bindEvents() {
 
   qs("#expense-form").addEventListener("submit", async (event) => {
     event.preventDefault();
-    await saveDoc("expenses", {
+    const paymentType = qs("#expense-payment-type").value || "cash";
+    const payload = {
       date: nowIso(),
       category: qs("#expense-category").value.trim(),
       amount: numberValue("#expense-amount"),
-      note: qs("#expense-note").value.trim()
-    });
-    event.target.reset();
-    await loadData();
-    showToast("Expense saved.");
+      note: qs("#expense-note").value.trim(),
+      paymentType
+    };
+
+    try {
+      let expense;
+      try {
+        expense = await saveDoc("expenses", payload);
+      } catch (error) {
+        if (!String(error.message || "").includes("payment_type")) throw error;
+        const { paymentType: _ignored, ...withoutType } = payload;
+        expense = await saveDoc("expenses", withoutType);
+        showToast("Saved without payment type. Add expenses.payment_type in Supabase.");
+      }
+
+      if (paymentType === "credit") {
+        await saveDoc("credits", {
+          type: "payable",
+          partyName: payload.category || "Expense",
+          sourceId: expense.id,
+          amount: payload.amount,
+          paidAmount: 0,
+          status: "open",
+          date: payload.date
+        });
+      }
+
+      event.target.reset();
+      qs("#expense-payment-type").value = "cash";
+      await loadData();
+      showToast("Expense saved.");
+    } catch (error) {
+      showToast(error.message || "Could not save expense.");
+    }
   });
 
   qs("#refresh-inventory")?.addEventListener("click", loadData);
