@@ -2799,7 +2799,7 @@ function renderStockPanel() {
 
 function drawDashboardCharts(movement, report) {
   if (!window.Chart) return;
-  const brand = "#003860";
+  const brand = "#0d7377";
   const ink = "#374151";
   const grid = "#e5e7eb";
   const labels = ["Cash", "KPay", "Banking"];
@@ -2810,8 +2810,8 @@ function drawDashboardCharts(movement, report) {
     data: {
       labels,
       datasets: [
-        { label: "In", data: keys.map((key) => movement.inflow[key]), backgroundColor: "#003860", borderRadius: 6 },
-        { label: "Out", data: keys.map((key) => movement.outflow[key]), backgroundColor: "#e8c800", borderRadius: 6 }
+        { label: "In", data: keys.map((key) => movement.inflow[key]), backgroundColor: "#0d7377", borderRadius: 6 },
+        { label: "Out", data: keys.map((key) => movement.outflow[key]), backgroundColor: "#c47a3a", borderRadius: 6 }
       ]
     },
     options: chartOptions(ink, grid)
@@ -2824,7 +2824,7 @@ function drawDashboardCharts(movement, report) {
       labels: ["Cash", "KPay", "Banking", "Credit"],
       datasets: [{
         data: [mix.cash, mix.kpay, mix.kbz, mix.credit],
-        backgroundColor: ["#003860", "#3d7ea6", "#e8c800", "#8a9bb0"],
+        backgroundColor: ["#0d7377", "#2563eb", "#c47a3a", "#7c3aed"],
         borderWidth: 0
       }]
     },
