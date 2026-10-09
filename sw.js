@@ -1,4 +1,4 @@
-const CACHE = "syl-pos-v2";
+const CACHE = "syl-pos-v3";
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(["/", "/manifest.webmanifest"])));
