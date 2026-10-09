@@ -115,8 +115,9 @@ function productImageHtml(imageUrl, alt = "Product", className = "product-thumb"
   if (!isValidProductImageUrl(imageUrl)) {
     return `<div class="${className} product-thumb-empty">No image</div>`;
   }
-  const safeAlt = String(alt || "Product").replace(/"/g, "&quot;");
-  return `<img src="${imageUrl}" alt="${safeAlt}" class="${className}" loading="lazy">`;
+  const safeAlt = escapeHtml(alt || "Product");
+  const safeSrc = escapeHtml(imageUrl);
+  return `<img src="${safeSrc}" alt="${safeAlt}" class="${className}" loading="lazy">`;
 }
 
 function setProductImagePreview(imageUrl) {
@@ -254,7 +255,8 @@ function returnableQtyForProduct(productId, excludeReturnId = null) {
 function openProductRestock(productId) {
   location.hash = "#products";
   showRoute();
-  openProductFormModal(state.products.find((product) => product.id === productId));
+  const product = state.products.find((item) => String(item.id) === String(productId));
+  if (product) openProductFormModal(product, "restock");
 }
 
 function setDamageModalMode(mode, record = null) {
@@ -1082,7 +1084,7 @@ function renderSettings() {
 
 function productDraftFromForm(existing) {
   const isEdit = Boolean(existing?.id);
-  const qty = Math.max(1, Math.round(numberValue("#product-qty")));
+  const qty = Math.max(0, Math.round(numberValue("#product-qty")));
   const unitCost = numberValue("#product-unit-cost");
   const batchCogs = numberValue("#product-batch-cogs");
   const cogsPerUnit = batchCogsPerUnit(batchCogs, qty);
@@ -1172,34 +1174,36 @@ function renderProducts() {
       const qty = Number(product.stockQty || 0);
       const status = stockStatus(qty);
       const brand = productBrand(product);
+      const safeName = escapeHtml(product.name);
+      const safeId = escapeHtml(product.id);
       return `
         <tr>
-          <td><input type="checkbox" class="form-check-input product-row-check" value="${product.id}" aria-label="Select ${product.name}"></td>
+          <td><input type="checkbox" class="form-check-input product-row-check" value="${safeId}" aria-label="Select ${safeName}"></td>
           <td>
             <div class="product-cell">
               ${productImageHtml(product.imageUrl, product.name, "product-thumb product-thumb-lg")}
               <div>
-                <strong>${product.name}</strong>
-                <div class="small text-muted">${productTypeLabel(product.type)} · ${product.unit || "pcs"}</div>
+                <strong>${safeName}</strong>
+                <div class="small text-muted">${escapeHtml(productTypeLabel(product.type))} · ${escapeHtml(product.unit || "pcs")}</div>
               </div>
             </div>
           </td>
-          <td><code>${product.sku || "-"}</code></td>
-          <td><code>${product.barcode || "-"}</code></td>
-          <td>${productTypeLabel(product.type)}</td>
-          <td>${brand}</td>
+          <td><code>${escapeHtml(product.sku || "-")}</code></td>
+          <td><code>${escapeHtml(product.barcode || "-")}</code></td>
+          <td>${escapeHtml(productTypeLabel(product.type))}</td>
+          <td>${escapeHtml(brand)}</td>
           <td class="text-end">${Number(product.price || 0).toLocaleString("en-US")}</td>
           <td class="text-end"><span class="${status.stockClass}">${qty.toLocaleString()}</span></td>
           <td><span class="${status.badgeClass}"><span class="status-dot"></span>${status.label}</span></td>
           <td class="text-end">
             <div class="product-actions">
-              <button class="action-btn action-edit" type="button" data-edit-product="${product.id}" title="Edit / Restock" aria-label="Edit">
+              <button class="action-btn action-edit" type="button" data-edit-product="${safeId}" title="Edit" aria-label="Edit">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="m4 20 4.5-1.2L19 8.3a2 2 0 0 0 0-2.8L18.5 5a2 2 0 0 0-2.8 0L5.2 15.5 4 20Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>
               </button>
-              <button class="action-btn action-view" type="button" data-view-product="${product.id}" title="View" aria-label="View">
+              <button class="action-btn action-view" type="button" data-view-product="${safeId}" title="View" aria-label="View">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z" stroke="currentColor" stroke-width="1.7"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.7"/></svg>
               </button>
-              <button class="action-btn action-delete" type="button" data-delete-product="${product.id}" title="Delete" aria-label="Delete">
+              <button class="action-btn action-delete" type="button" data-delete-product="${safeId}" title="Delete" aria-label="Delete">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V5h6v2m-8 0 1 12h8l1-12" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
               </button>
             </div>
@@ -1288,10 +1292,12 @@ function populateProductBrandFilter() {
   select.value = brands.includes(current) || current === "all" ? current : "all";
 }
 
-function openProductFormModal(product = null) {
-  fillProductForm(product || undefined);
+function openProductFormModal(product = null, mode = "edit") {
+  fillProductForm(product || undefined, product?.id ? mode : "edit");
   const title = qs("#product-form-modal-label");
-  if (title) title.textContent = product?.id ? "Edit / Restock Product" : "Add New Product";
+  if (title) {
+    title.textContent = !product?.id ? "Add New Product" : mode === "restock" ? "Restock Product" : "Edit Product";
+  }
   bootstrap.Modal.getOrCreateInstance(qs("#product-form-modal")).show();
 }
 
@@ -1464,12 +1470,12 @@ function lastSupplierIdForProduct(productId) {
 function renderSuppliersTable() {
   qs("#suppliers-body").innerHTML = state.suppliers.map((supplier) => `
     <tr>
-      <td>${supplier.name}</td>
-      <td>${supplier.phone || ""}</td>
-      <td>${supplier.address || ""}</td>
-      <td class="text-end">
-        <button class="btn btn-sm btn-outline-primary" data-edit-supplier="${supplier.id}">Edit</button>
-        <button class="btn btn-sm btn-outline-danger" data-delete-supplier="${supplier.id}">Delete</button>
+      <td>${escapeHtml(supplier.name)}</td>
+      <td>${escapeHtml(supplier.phone || "")}</td>
+      <td>${escapeHtml(supplier.address || "")}</td>
+      <td class="text-end text-nowrap">
+        <button class="btn btn-sm btn-outline-primary" type="button" data-edit-supplier="${escapeHtml(supplier.id)}">Edit</button>
+        <button class="btn btn-sm btn-outline-danger" type="button" data-delete-supplier="${escapeHtml(supplier.id)}">Delete</button>
       </td>
     </tr>
   `).join("");
@@ -1497,6 +1503,45 @@ async function deleteSupplier(supplierId) {
   await removeDoc("suppliers", supplierId);
 }
 
+function isForeignKeyError(error) {
+  return /foreign key|violates foreign key|still referenced/i.test(error?.message || "");
+}
+
+async function clearProductLinks(productId) {
+  const idMatch = (row) => String(row.productId) === String(productId);
+  if (!state.isSupabaseReady) {
+    const db = localDb();
+    ["purchases", "saleItems", "stockReturns", "stockDamages"].forEach((key) => {
+      db[key] = (db[key] || []).map((row) => (idMatch(row) ? { ...row, productId: null } : row));
+    });
+    saveLocalDb(db);
+    return;
+  }
+
+  const tables = ["purchases", "sale_items", "stock_returns", "stock_damages"];
+  for (const table of tables) {
+    const { error } = await supabase.from(table).update({ product_id: null }).eq("product_id", productId);
+    if (error && !/row-level security/i.test(error.message || "")) throwIfError(error);
+  }
+}
+
+async function deleteProduct(productId) {
+  try {
+    await removeDoc("products", productId);
+    return;
+  } catch (error) {
+    if (!isForeignKeyError(error)) throw error;
+  }
+
+  await clearProductLinks(productId);
+  try {
+    await removeDoc("products", productId);
+  } catch (error) {
+    if (!isForeignKeyError(error)) throw error;
+    throw new Error("This product is still linked to a sale or purchase. Run the product delete SQL in Supabase, then try again.");
+  }
+}
+
 function toggleNewSupplierField() {
   const isNew = qs("#product-supplier").value === "__new__";
   qs("#new-supplier-wrap").classList.toggle("d-none", !isNew);
@@ -1509,21 +1554,22 @@ function fillSupplierForm(supplier) {
   qs("#supplier-address").value = supplier?.address || "";
 }
 
-function fillProductForm(product) {
+function fillProductForm(product, mode = "edit") {
   const isEdit = Boolean(product?.id);
+  const restock = mode === "restock";
   qs("#product-id").value = product?.id || "";
-  qs("#product-form-mode").textContent = isEdit ? "Restock existing product" : "New product";
+  qs("#product-form-mode").textContent = restock ? "Adding stock" : isEdit ? "Editing product" : "New product";
   qs("#product-type").value = product?.type || "HA";
-  qs("#product-type").disabled = isEdit;
+  qs("#product-type").disabled = false;
   qs("#product-unit").value = product?.unit || "pcs";
   qs("#product-name").value = product?.name || "";
-  qs("#product-name").readOnly = isEdit;
+  qs("#product-name").readOnly = false;
   if (qs("#product-brand")) qs("#product-brand").value = product?.brand || "";
   qs("#product-sku").value = product?.sku || "";
   qs("#product-barcode").value = product?.barcode || "";
   qs("#product-unit-cost").value = 0;
   qs("#product-batch-cogs").value = 0;
-  qs("#product-qty").value = isEdit ? 1 : 1;
+  qs("#product-qty").value = !isEdit || restock ? 1 : 0;
   qs("#product-price").value = product?.priceLocked ? product.price : "";
   qs("#product-payment-type").value = "cash";
   qs("#product-new-supplier").value = "";
@@ -1644,7 +1690,7 @@ async function saveProduct(event) {
     fillProductForm();
     bootstrap.Modal.getInstance(qs("#product-form-modal"))?.hide();
     await loadData();
-    showToast(existing ? "Product restocked." : "Product saved.");
+    showToast(existing ? (qty > 0 ? "Product updated and stock added." : "Product updated.") : "Product saved.");
   } catch (error) {
     showToast(error.message || "Could not save product.");
   } finally {
@@ -2955,7 +3001,8 @@ function bindEvents() {
 
   qs("#reset-product-form").addEventListener("click", () => {
     const idValue = qs("#product-id").value;
-    fillProductForm(idValue ? state.products.find((product) => product.id === idValue) : undefined);
+    const existing = idValue ? state.products.find((product) => String(product.id) === String(idValue)) : undefined;
+    fillProductForm(existing, existing && Number(qs("#product-qty").value) > 0 ? "restock" : "edit");
   });
 
   qs("#add-product-btn")?.addEventListener("click", () => openProductFormModal());
@@ -3002,12 +3049,26 @@ function bindEvents() {
     const editId = editBtn?.dataset.editProduct;
     const viewId = viewBtn?.dataset.viewProduct;
     const deleteId = deleteBtn?.dataset.deleteProduct;
-    if (editId) openProductFormModal(state.products.find((product) => product.id === editId));
-    if (viewId) openProductViewModal(viewId);
-    if (deleteId && confirm("Delete this product?")) {
-      await removeDoc("products", deleteId);
-      await loadData();
-      showToast("Product deleted.");
+    if (!editId && !viewId && !deleteId) return;
+    event.preventDefault();
+
+    try {
+      if (editId) {
+        const product = state.products.find((item) => String(item.id) === String(editId));
+        if (!product) {
+          showToast("Product not found.");
+          return;
+        }
+        openProductFormModal(product);
+      }
+      if (viewId) openProductViewModal(viewId);
+      if (deleteId && confirm("Delete this product? Purchase and sale history will keep the name.")) {
+        await deleteProduct(deleteId);
+        await loadData();
+        showToast("Product deleted.");
+      }
+    } catch (error) {
+      showToast(error.message || "Could not update this product.");
     }
   });
 
@@ -3124,13 +3185,21 @@ function bindEvents() {
       phone: qs("#supplier-phone").value.trim(),
       address: qs("#supplier-address").value.trim()
     };
+    if (!payload.name) {
+      showToast("Supplier name is required.");
+      return;
+    }
     if (supplierId) payload.id = supplierId;
     else payload.createdAt = nowIso();
 
-    await saveDoc("suppliers", payload);
-    fillSupplierForm();
-    await loadData();
-    showToast("Supplier saved.");
+    try {
+      await saveDoc("suppliers", payload);
+      fillSupplierForm();
+      await loadData();
+      showToast(supplierId ? "Supplier updated." : "Supplier saved.");
+    } catch (error) {
+      showToast(error.message || "Could not save supplier.");
+    }
   });
 
   qs("#reset-supplier-form").addEventListener("click", () => fillSupplierForm());
@@ -3141,7 +3210,14 @@ function bindEvents() {
     const editId = editBtn?.dataset.editSupplier;
     const deleteId = deleteBtn?.dataset.deleteSupplier;
     if (editId) {
-      fillSupplierForm(state.suppliers.find((supplier) => String(supplier.id) === String(editId)));
+      const supplier = state.suppliers.find((item) => String(item.id) === String(editId));
+      if (!supplier) {
+        showToast("Supplier not found.");
+        return;
+      }
+      fillSupplierForm(supplier);
+      qs("#supplier-form")?.scrollIntoView({ block: "nearest" });
+      qs("#supplier-name")?.focus();
       return;
     }
     if (!deleteId || !confirm("Delete this supplier? Purchase history will keep the supplier name.")) return;

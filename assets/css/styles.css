@@ -517,7 +517,20 @@ h1, h2, h3, .navbar-brand {
 
 .products-table-wrap {
   padding: 0;
-  overflow: hidden;
+  overflow-x: auto;
+}
+
+.products-table th:last-child,
+.products-table td:last-child {
+  position: sticky;
+  right: 0;
+  background: #fff;
+  white-space: nowrap;
+}
+
+.products-table thead th:last-child {
+  background: #f8fafc;
+  z-index: 1;
 }
 
 .products-table {

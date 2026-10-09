@@ -58,7 +58,7 @@ create table if not exists purchases (
   date timestamptz default now(),
   supplier_id uuid references suppliers(id) on delete set null,
   supplier_name text,
-  product_id uuid references products(id),
+  product_id uuid references products(id) on delete set null,
   product_name text,
   qty numeric not null,
   unit_cost numeric default 0,
@@ -99,7 +99,7 @@ create table if not exists sales (
 create table if not exists sale_items (
   id uuid primary key default gen_random_uuid(),
   sale_id uuid references sales(id) on delete cascade,
-  product_id uuid references products(id),
+  product_id uuid references products(id) on delete set null,
   name text,
   barcode text,
   unit text,
@@ -145,7 +145,7 @@ create table if not exists expenses (
 create table if not exists stock_damages (
   id uuid primary key default gen_random_uuid(),
   date timestamptz default now(),
-  product_id uuid references products(id),
+  product_id uuid references products(id) on delete set null,
   product_name text,
   sku text,
   qty numeric not null,
@@ -159,7 +159,7 @@ create table if not exists stock_damages (
 create table if not exists stock_returns (
   id uuid primary key default gen_random_uuid(),
   date timestamptz default now(),
-  product_id uuid references products(id),
+  product_id uuid references products(id) on delete set null,
   product_name text,
   sku text,
   qty numeric not null,
@@ -189,6 +189,32 @@ create index if not exists sale_items_sale_id_idx on sale_items (sale_id);
 create index if not exists purchases_date_idx on purchases (date desc);
 create index if not exists credits_status_idx on credits (status);
 create index if not exists expenses_date_idx on expenses (date desc);
+
+-- Keep purchase and sale history when a product is deleted.
+alter table purchases alter column product_id drop not null;
+alter table sale_items alter column product_id drop not null;
+alter table stock_damages alter column product_id drop not null;
+alter table stock_returns alter column product_id drop not null;
+
+alter table purchases drop constraint if exists purchases_product_id_fkey;
+alter table purchases
+  add constraint purchases_product_id_fkey
+  foreign key (product_id) references products(id) on delete set null;
+
+alter table sale_items drop constraint if exists sale_items_product_id_fkey;
+alter table sale_items
+  add constraint sale_items_product_id_fkey
+  foreign key (product_id) references products(id) on delete set null;
+
+alter table stock_damages drop constraint if exists stock_damages_product_id_fkey;
+alter table stock_damages
+  add constraint stock_damages_product_id_fkey
+  foreign key (product_id) references products(id) on delete set null;
+
+alter table stock_returns drop constraint if exists stock_returns_product_id_fkey;
+alter table stock_returns
+  add constraint stock_returns_product_id_fkey
+  foreign key (product_id) references products(id) on delete set null;
 
 -- Sales staff may change stock only. Prices and product details stay with admin.
 create or replace function public.protect_product_prices()
@@ -321,6 +347,12 @@ create policy "sale_items_select_own" on sale_items
         and sales.user_id = auth.uid()
     )
   );
+
+drop policy if exists "sale_items_admin_update" on sale_items;
+create policy "sale_items_admin_update" on sale_items
+  for update to authenticated
+  using (user_role() = 'admin')
+  with check (user_role() = 'admin');
 
 -- Suppliers, purchases, expenses, credit payments: admin only
 drop policy if exists "suppliers_admin" on suppliers;
